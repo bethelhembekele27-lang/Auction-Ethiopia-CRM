@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 import Login from "../components/Login";
 import Header from "../components/Header";
@@ -20,40 +20,39 @@ import NotificationsPage from "../pages/NotificationsPage";
 
 import { useNotifications } from "../hooks/useNotifications";
 import { roleLabels, EDIT_ROLES, ADMIN_LIKE_ROLES, navItems } from "../constants/roles";
-import {
-  seedInquiries, seedFollowups, seedAppointments, seedVisitSetups,
-  seedComplaints, seedEscalations, seedAuditLog, seedEmployees,
-} from "../constants/seedData";
 import { pad, nowStamp } from "../utils/format";
+import * as api from "../api";
 
 // This file is intentionally thin — routing + session shell only. All
-// page logic lives in pages/, all shared UI in components/. Once the
-// backend exists, the seed* useState calls below get replaced with
-// api calls (see api/) instead of local in-memory arrays.
-function App() {
+// page logic lives in pages/, all shared UI in components/. Every entity
+// list starts empty and is populated from the backend once a session
+// exists — no hardcoded/seed data anywhere in the frontend.
+export default function App() {
   const [page, setPage] = useState("dashboard");
   const [session, setSession] = useState(null);
   const [theme, setTheme] = useState("light");
   const [showAccountSettings, setShowAccountSettings] = useState(false);
 
-  const [inquiries, setInquiries] = useState(seedInquiries);
-  const [followups, setFollowups] = useState(seedFollowups);
-  const [appointments, setAppointments] = useState(seedAppointments);
-  const [visitSetups, setVisitSetups] = useState(seedVisitSetups);
-  const [complaints, setComplaints] = useState(seedComplaints);
-  const [escalations, setEscalations] = useState(seedEscalations);
-  const [auditLog, setAuditLog] = useState(seedAuditLog);
-  const [employees, setEmployees] = useState(seedEmployees);
+  const [inquiries, setInquiries] = useState([]);
+  const [followups, setFollowups] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [visitSetups, setVisitSetups] = useState([]);
+  const [complaints, setComplaints] = useState([]);
+  const [escalations, setEscalations] = useState([]);
+  const [auditLog, setAuditLog] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [roles, setRoles] = useState(Object.keys(roleLabels));
 
-  const counters = useRef({
-    inq: seedInquiries.length, fu: seedFollowups.length, apt: seedAppointments.length,
-    vst: seedVisitSetups.length, cmp: seedComplaints.length, emp: seedEmployees.length,
-    esc: seedEscalations.length,
-  });
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  // Used only for optimistic client-side IDs before the backend responds
+  // with the real one on create. Once every page's save() awaits the API
+  // response and uses its returned id, this can be removed entirely.
+  const counters = useRef({ inq: 0, fu: 0, apt: 0, vst: 0, cmp: 0, emp: 0, esc: 0 });
   function genId(prefix, key) {
     counters.current[key] += 1;
-    return ${prefix}-${pad(counters.current[key])};
+    return `${prefix}-${pad(counters.current[key])}`;
   }
 
   const canEdit = session ? EDIT_ROLES.includes(session.role) : false;
@@ -66,13 +65,55 @@ function App() {
     ]);
   }
 
-  function handleLogin(role, username, remember) {
-    // Resolve which named operator this login belongs to (if any), so
-    // reminders/escalations can be filtered to exactly this person.
-    const emp = employees.find((e) => e.username === username);
-    setSession({ role, username, operatorName: emp && role === "call_operator" ? emp.name : null });
+  // Pulls every entity list from the backend in parallel. Called once a
+  // session exists (after login, or on page refresh once auth persistence
+  // is wired up). Each list is left empty on failure rather than crashing —
+  // pages already render EmptyState / "No data yet" for empty arrays.
+  const loadAllData = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const [
+        inquiriesRes, followupsRes, appointmentsRes, visitSetupsRes,
+        complaintsRes, escalationsRes, auditRes, employeesRes, rolesRes,
+      ] = await Promise.all([
+        api.inquiries.listInquiries(),
+        api.followups.listFollowups(),
+        api.appointments.listAppointments(),
+        api.visitSetups.listVisitSetups(),
+        api.complaints.listComplaints(),
+        api.escalations.listEscalations(),
+        api.audit.listAuditLog(),
+        api.employees.listEmployees(),
+        api.employees.listRoles(),
+      ]);
+      setInquiries(inquiriesRes || []);
+      setFollowups(followupsRes || []);
+      setAppointments(appointmentsRes || []);
+      setVisitSetups(visitSetupsRes || []);
+      setComplaints(complaintsRes || []);
+      setEscalations(escalationsRes || []);
+      setAuditLog(auditRes || []);
+      setEmployees(employeesRes || []);
+      if (rolesRes && rolesRes.length) setRoles(rolesRes);
+    } catch (err) {
+      setLoadError(err.body?.message || "Couldn't load data from the server.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (session) loadAllData();
+  }, [session, loadAllData]);
+
+  function handleLogin(role, username, operatorName) {
+    setSession({ role, username, operatorName: operatorName || null });
   }
-  function handleLogout() {
+  async function handleLogout() {
+    try { await api.auth.logout(); } catch { /* ignore network errors on logout */ }
+    localStorage.removeItem("auth_token");
+    sessionStorage.removeItem("auth_token");
     setSession(null);
     setPage("dashboard");
   }
@@ -86,27 +127,34 @@ function App() {
     escalations
   );
 
+  if (!session) return <Login onLogin={handleLogin} />;
+
   return (
-    <>
-      {!session ? (
-        <Login onLogin={handleLogin} />
-        ) : (
-        <div className="flex flex-col min-h-screen max-w-[100vw] text-[color:var(--text)] bg-[color:var(--paper)]" data-theme={theme}>
-          <Header
-            page={page} setPage={setPage} role={session.role} username={session.username}
-            theme={theme} setTheme={setTheme} onLogout={handleLogout} onOpenAccountSettings={() => setShowAccountSettings(true)}
-            bellItems={bellItems} onGoToNotification={setPage}
-          />
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="pt-[26px] px-7 pb-15 mobile:pt-[18px] mobile:px-4 mobile:pb-10">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
-                <h1 style={{ margin: 0 }}>{navItems.find((n) => n.key === page)?.label}</h1>
-                {!canEdit && (
-                  <span className="inline-block font-mono font-semibold text-[10.5px] tracking-[0.06em] uppercase px-[9px] py-[3px] rounded-[3px] border-[1.5px] border-current whitespace-nowrap my-0.5 dark:bg-white/[0.08] text-[color:var(--gray)] bg-[color:var(--gray-bg)]">
-                    View only — {roleLabels[session.role]}
-                  </span>
-                )}
-              </div>
+    <div className="flex flex-col min-h-screen max-w-[100vw] text-[color:var(--text)] bg-[color:var(--paper)]" data-theme={theme}>
+      <Header
+        page={page} setPage={setPage} role={session.role} username={session.username}
+        theme={theme} setTheme={setTheme} onLogout={handleLogout} onOpenAccountSettings={() => setShowAccountSettings(true)}
+        bellItems={bellItems} onGoToNotification={setPage}
+      />
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="pt-[26px] px-7 pb-15 mobile:pt-[18px] mobile:px-4 mobile:pb-10">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
+            <h1 style={{ margin: 0 }}>{navItems.find((n) => n.key === page)?.label}</h1>
+            {!canEdit && (
+              <span className="inline-block font-mono font-semibold text-[10.5px] tracking-[0.06em] uppercase px-[9px] py-[3px] rounded-[3px] border-[1.5px] border-current whitespace-nowrap my-0.5 dark:bg-white/[0.08] text-[color:var(--gray)] bg-[color:var(--gray-bg)]">
+                View only — {roleLabels[session.role]}
+              </span>
+            )}
+          </div>
+          {loadError && (
+            <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 16 }}>
+              {loadError} <button className="underline cursor-pointer bg-transparent border-none text-[color:var(--red)]" onClick={loadAllData}>Retry</button>
+            </div>
+          )}
+          {loading ? (
+            <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-3)", padding: "40px 0" }}>Loading…</div>
+          ) : (
+            <>
               {page === "dashboard" && <Dashboard inquiries={inquiries} followups={followups} appointments={appointments} complaints={complaints} />}
               {page === "inquiries" && (
                 <Inquiries
@@ -129,16 +177,14 @@ function App() {
                 <Employees employees={employees} setEmployees={setEmployees} roles={roles} setRoles={setRoles} genId={genId} addAudit={addAudit} />
               )}
               {page === "notifications" && <NotificationsPage items={bellItems} onClear={clearFromBell} goTo={setPage} />}
-            </div>
-          </div>
-          {showAccountSettings && (
-            <AccountSettingsModal username={session.username} onSave={handleSaveProfile} onClose={() => setShowAccountSettings(false)} />
+            </>
           )}
-          <NotificationPopups popupItems={popupItems} popAway={popAway} goTo={setPage} />
         </div>
+      </div>
+      {showAccountSettings && (
+        <AccountSettingsModal username={session.username} onSave={handleSaveProfile} onClose={() => setShowAccountSettings(false)} />
       )}
-    </>
+      <NotificationPopups popupItems={popupItems} popAway={popAway} goTo={setPage} />
+    </div>
   );
 }
-
-export default App;

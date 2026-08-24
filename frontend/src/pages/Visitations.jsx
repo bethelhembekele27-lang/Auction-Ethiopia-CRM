@@ -2,11 +2,8 @@ import { useState, useMemo } from "react";
 import { APPT_STATUSES, APPT_STAMP } from "../constants/lookups";
 import { todayISO, fmtDate, isIsoDate, dateInPreset } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
-import { autoFollowupForVisit } from "./VisitSetups";
+import { appointments as appointmentsApi, followups as followupsApi } from "../api";
 
-/* ================================================================
-   VISITATIONS
-================================================================= */
 export const emptyAppt = {
   id: "", auction: "", visitorName: "", phone: "", company: "",
   visitDate: "", visitTime: "", assignedStaff: "", status: "Requested", notes: "",
@@ -21,7 +18,7 @@ const WHEN_PRESETS = [
   { key: "month", label: "This month" },
 ];
 
-export function Visitations({ appointments, setAppointments, visitSetups, setFollowups, genId, canEdit, addAudit, session }) {
+export default function Visitations({ appointments, setAppointments, visitSetups, setFollowups, canEdit, addAudit, session }) {
   const [when, setWhen] = useState("all");
   const [pickDate, setPickDate] = useState("");
   const [fCompany, setFCompany] = useState("All");
@@ -30,10 +27,9 @@ export function Visitations({ appointments, setAppointments, visitSetups, setFol
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyAppt);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  // Company/batch/guide filter options come from registered Visit Setups —
-  // batch options narrow to whichever company is picked (or all, if the
-  // company filter is "All").
   const companyOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.company))], [visitSetups]);
   const batchOptions = useMemo(
     () => [...new Set(visitSetups.filter((v) => fCompany === "All" || v.company === fCompany).map((v) => v.batch))],
@@ -41,19 +37,11 @@ export function Visitations({ appointments, setAppointments, visitSetups, setFol
   );
   const guideOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.guideName))], [visitSetups]);
 
-  // A visit setup is only offered for NEW bookings while it's still "open" —
-  // its date hasn't passed yet (or it has no calendar date / a hand-typed
-  // one, which can't be judged as past). Once the date passes it drops off
-  // this list so operators can't book against a batch that's already been
-  // through. Past visitations booked against it earlier are unaffected —
-  // they stay exactly as they are in Visitations and in Reports.
   function isSetupOpen(v) {
     if (!v.date || !isIsoDate(v.date)) return true;
     return v.date >= todayISO();
   }
   const openVisitSetups = useMemo(() => visitSetups.filter(isSetupOpen), [visitSetups]);
-  // If we're editing a visit already booked against a setup that has since
-  // closed, keep that one option visible so the field doesn't go blank.
   const setupOptions = useMemo(() => {
     if (draft.setupId && !openVisitSetups.some((v) => v.id === draft.setupId)) {
       const current = visitSetups.find((v) => v.id === draft.setupId);
@@ -62,9 +50,6 @@ export function Visitations({ appointments, setAppointments, visitSetups, setFol
     return openVisitSetups;
   }, [openVisitSetups, visitSetups, draft.setupId]);
 
-  // The "when" dropdown and the calendar picker work together: picking a
-  // specific date overrides the preset for that day. Status is not a
-  // separate filter; it's shown as its own column in the table below.
   const filtered = appointments.filter((a) => {
     if (pickDate) { if (a.visitDate !== pickDate) return false; }
     else if (when !== "all" && !dateInPreset(a.visitDate, when)) return false;
@@ -76,12 +61,9 @@ export function Visitations({ appointments, setAppointments, visitSetups, setFol
   const sorted = [...filtered].sort((a, b) => new Date(a.visitDate) - new Date(b.visitDate));
   function clearWhen() { setWhen("all"); setPickDate(""); }
 
-  function openNew() { setEditing(null); setDraft(emptyAppt); setModalOpen(true); }
-  function openEdit(a) { setEditing(a.id); setDraft({ ...a }); setModalOpen(true); }
+  function openNew() { setEditing(null); setDraft(emptyAppt); setSaveError(""); setModalOpen(true); }
+  function openEdit(a) { setEditing(a.id); setDraft({ ...a }); setSaveError(""); setModalOpen(true); }
 
-  // Picking a Visit Setup pulls in the company/batch/address/items/guide —
-  // the operator only has to add the visitor's name, phone, and the day/
-  // time they're coming.
   function applySetup(setupId) {
     const s = visitSetups.find((v) => v.id === setupId);
     if (!s) { setDraft((d) => ({ ...d, setupId: "" })); return; }
@@ -93,23 +75,34 @@ export function Visitations({ appointments, setAppointments, visitSetups, setFol
   }
   const selectedSetup = visitSetups.find((v) => v.id === draft.setupId);
 
-  function save() {
+  async function save() {
     if (!draft.visitorName || !draft.phone || !draft.visitDate) return;
-    if (editing) {
-      const prev = appointments.find((a) => a.id === editing);
-      setAppointments((prev2) => prev2.map((a) => (a.id === editing ? draft : a)));
-      if (prev && prev.status !== draft.status) addAudit("Update visitation status", prev.status, draft.status, `${draft.id} · ${draft.visitorName}`);
-    } else {
-      const record = { ...draft, id: genId("APT", "apt") };
-      setAppointments((prev2) => [record, ...prev2]);
-      addAudit("Register visitor", "—", `${record.id} created`, `${record.visitorName} · ${record.company} · ${record.batch}`);
-      // Registering a visit automatically puts the visitor on the
-      // follow-up list so an operator calls back afterward.
-      const fu = autoFollowupForVisit(record, genId, (session && session.operatorName) || "");
-      setFollowups((prev2) => [fu, ...prev2]);
-      addAudit("Create follow-up", "—", `${fu.id} created`, `Auto-created for ${record.visitorName} after visit`);
+    setSaving(true);
+    setSaveError("");
+    try {
+      if (editing) {
+        const prev = appointments.find((a) => a.id === editing);
+        const updated = await appointmentsApi.updateAppointment(editing, draft);
+        setAppointments((prev2) => prev2.map((a) => (a.id === editing ? { ...a, ...updated } : a)));
+        if (prev && prev.status !== draft.status) addAudit("Update visitation status", prev.status, draft.status, `${draft.id} · ${draft.visitorName}`);
+      } else {
+        const created = await appointmentsApi.createAppointment(draft);
+        setAppointments((prev2) => [created, ...prev2]);
+        addAudit("Register visitor", "—", `${created.id} created`, `${created.visitorName} · ${created.company} · ${created.batch}`);
+        // Server auto-creates the day-after follow-up (see API_SPEC.md §4) —
+        // re-fetch follow-ups so it shows up immediately instead of
+        // creating one client-side.
+        try {
+          const refreshed = await followupsApi.listFollowups();
+          setFollowups(refreshed || []);
+        } catch { /* non-fatal — follow-up list just won't refresh this instant */ }
+      }
+      setModalOpen(false);
+    } catch (err) {
+      setSaveError(err.body?.message || "Couldn't save — try again.");
+    } finally {
+      setSaving(false);
     }
-    setModalOpen(false);
   }
 
   return (
@@ -171,7 +164,7 @@ export function Visitations({ appointments, setAppointments, visitSetups, setFol
           </Field>
           {selectedSetup && (
             <div className="col-span-2" style={{ fontSize: 12.5, color: "var(--text-2)", background: "var(--paper)", borderRadius: 6, padding: "8px 10px" }}>
-              <b>{selectedSetup.address}</b> — {selectedSetup.items}<br/>
+              <b>{selectedSetup.address}</b> — {selectedSetup.items}<br />
               Guide {selectedSetup.guideName} ({selectedSetup.guidePhone}) is available {selectedSetup.guideDays.join(", ")}, {selectedSetup.guideTimeFrom}–{selectedSetup.guideTimeTo}
             </div>
           )}
@@ -183,8 +176,9 @@ export function Visitations({ appointments, setAppointments, visitSetups, setFol
           <Field label="Notes" full><textarea className={inputCls} rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
         </div>
         {!editing && <div style={{ fontSize: 12, color: "var(--text-3)" }}>Registering this visitor automatically adds them to the Follow-ups list for a call back after the visit.</div>}
+        {saveError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{saveError}</div>}
         <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" onClick={save}>{editing ? "Save changes" : "Register visitor"}</button>
+          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={saving} onClick={save}>{saving ? "Saving…" : editing ? "Save changes" : "Register visitor"}</button>
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
         </div>
       </Modal>

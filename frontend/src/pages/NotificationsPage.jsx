@@ -1,14 +1,7 @@
 import { todayISO } from "../utils/format";
 import { NOTIFICATION_KIND_STYLE, timeAgo } from "../components/NotificationPopups";
 
-/* ================================================================
-   NOTIFICATIONS PAGE
-   The bell's one and only destination. Shows every notification
-   addressed to the signed-in user (already scoped to them by
-   buildNotifications), grouped into Today / Earlier, each with a
-   direct link into the record it's about and a way to clear it.
-================================================================= */
-export function NotificationsPage({ items, onClear, goTo }) {
+export default function NotificationsPage({ items, onClear, goTo }) {
   const todayStr = todayISO();
   const isToday = (ts) => new Date(ts).toISOString().slice(0, 10) === todayStr;
   const today = items.filter((n) => isToday(n.createdAt));

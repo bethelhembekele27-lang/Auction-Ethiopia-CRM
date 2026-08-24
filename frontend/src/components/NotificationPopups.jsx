@@ -1,8 +1,6 @@
 /* Shared visual language for a notification's kind — used on these
    floating popups AND on pages/NotificationsPage.jsx, so the two feel
-   like one system rather than two different UIs. Exported so the
-   Notifications page (in pages/) can reuse both without duplicating
-   them. */
+   like one system rather than two different UIs. */
 export const NOTIFICATION_KIND_STYLE = {
   reminder: { icon: "⏰", color: "var(--amber)", bg: "var(--amber-bg)", label: "Follow-up reminder" },
   escalation_new: { icon: "🚩", color: "var(--red)", bg: "var(--red-bg)", label: "Manager request" },
@@ -21,7 +19,7 @@ export function timeAgo(ts) {
   return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function NotificationPopups({ popupItems, popAway, goTo }) {
+export default function NotificationPopups({ popupItems, popAway, goTo }) {
   if (!popupItems.length) return null;
   return (
     <div className="fixed bottom-5 right-5 z-[70] flex flex-col gap-2.5 max-w-[340px] w-[calc(100vw-40px)]">

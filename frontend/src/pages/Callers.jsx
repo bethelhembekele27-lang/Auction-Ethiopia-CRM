@@ -3,10 +3,7 @@ import { PRIORITY_STAMP, STATUS_STAMP, APPT_STAMP } from "../constants/lookups";
 import { fmtDate } from "../utils/format";
 import { Stamp, Modal, EmptyState } from "../components/ui";
 
-/* ================================================================
-   CALLERS  (profile / call history per phone number)
-================================================================= */
-export function Callers({ inquiries, followups, appointments }) {
+export default function Callers({ inquiries, followups, appointments }) {
   const [query, setQuery] = useState("");
   const [openPhone, setOpenPhone] = useState(null);
 

@@ -1,20 +1,5 @@
-// Demo accounts / roles.
-// Mirrors the Processing Fee Management prototype's role set so the
-// same staff can move between modules with one identity.
-// Each call-operator account is named after (and mapped 1:1 to) an
-// entry in OPERATORS (see lookups.js), so a logged-in operator's
-// reminders and escalations can be matched to them specifically.
-export const demoAccounts = [
-  { username: "admin", password: "admin123", role: "administrator" },
-  { username: "selamawit", password: "call123", role: "call_operator" },
-  { username: "dawit", password: "call123", role: "call_operator" },
-  { username: "hana", password: "call123", role: "call_operator" },
-  { username: "yonas", password: "call123", role: "call_operator" },
-  { username: "meron", password: "call123", role: "call_operator" },
-  { username: "manager", password: "manager123", role: "auction_manager" },
-  { username: "viewer", password: "viewer123", role: "viewer" },
-];
-
+// Role labels and nav/permission config — NOT user data. Actual accounts
+// now live on the backend and are authenticated via api/auth.js.
 export const roleLabels = {
   administrator: "Administrator",
   call_operator: "CRM / Call Center Officer",
@@ -43,8 +28,6 @@ export const navItems = [
   { key: "audit", label: "Audit trail", roles: ADMIN_LIKE_ROLES },
   { key: "escalations", label: "Manager Requests", roles: ["auction_manager", "call_operator"] },
   { key: "employees", label: "Employees", roles: ["administrator"] },
-  // Reached only via the notification bell — intentionally left out of
-  // the main nav so it doesn't compete with the primary work areas.
   { key: "notifications", label: "Notifications", hidden: true },
 ];
 
@@ -57,9 +40,9 @@ export const PERMISSIONS = [
   "View audit trail", "Manage employees & roles",
 ];
 
-// Default privilege sets per built-in role. Pulled in here (rather than
-// left inline in Employees.jsx) because seedData.js needs it to build
-// seedEmployees' initial `privileges` arrays.
+// Default privilege sets per built-in role — used to pre-check boxes when
+// creating a new employee. The backend is the source of truth for what
+// each employee's actual privileges are once created.
 export const rolePrivilegeDefaults = {
   administrator: PERMISSIONS.slice(),
   call_operator: ["View dashboard", "View inquiries", "Create / edit inquiries", "Manage follow-ups", "Manage visitations", "Manage complaints"],

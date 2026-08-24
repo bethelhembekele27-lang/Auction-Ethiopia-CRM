@@ -1,25 +1,30 @@
 import { useState } from "react";
-import { demoAccounts } from "../constants/roles";
+import { auth } from "../api";
 import { logo } from "../constants/assets";
 
-/* ================================================================
-   LOGIN SCREEN
-   Same layout/copy pattern as the Processing Fee Management login —
-   any of the demo accounts above can sign in; call-center accounts
-   land straight on this CRM's Dashboard.
-================================================================= */
-export function Login({ onLogin }) {
+export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  function attemptLogin() {
-    const match = demoAccounts.find((a) => a.username === username.trim().toLowerCase() && a.password === password);
-    if (!match) { setError("Incorrect username or password."); return; }
+  async function attemptLogin() {
+    if (!username.trim() || !password) return;
+    setLoading(true);
     setError("");
-    onLogin(match.role, match.username, remember);
+    try {
+      // Expected shape: { token, user: { username, role, operatorName } }
+      const { token, user } = await auth.login(username.trim().toLowerCase(), password);
+      if (remember) localStorage.setItem("auth_token", token);
+      else sessionStorage.setItem("auth_token", token);
+      onLogin(user.role, user.username, user.operatorName || null);
+    } catch (err) {
+      setError(err.body?.message || "Incorrect username or password.");
+    } finally {
+      setLoading(false);
+    }
   }
   function handleKeyDown(e) { if (e.key === "Enter") attemptLogin(); }
 
@@ -76,7 +81,7 @@ export function Login({ onLogin }) {
 
         {error && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md mt-3.5">{error}</div>}
 
-        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--ink)] text-white border-[color:var(--ink)]" style={{ width: "100%", marginTop: 18 }} onClick={attemptLogin}>Sign in</button>
+        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--ink)] text-white border-[color:var(--ink)]" style={{ width: "100%", marginTop: 18 }} disabled={loading} onClick={attemptLogin}>{loading ? "Signing in…" : "Sign in"}</button>
       </div>
     </div>
   );

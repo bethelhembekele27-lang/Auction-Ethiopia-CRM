@@ -1,10 +1,3 @@
-/* ================================================================
-   NOTIFICATION BELL
-   A direct entry point, not a preview dropdown: clicking it takes the
-   signed-in user straight to their own Notifications page (see
-   pages/NotificationsPage.jsx). The badge count is the only preview
-   given here — everything else lives on the full page.
-================================================================= */
 export function NotificationBell({ items, onGoTo }) {
   const count = items.length;
 

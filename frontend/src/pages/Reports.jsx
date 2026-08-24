@@ -4,9 +4,6 @@ import { todayISO, fmtDate, dateInPreset } from "../utils/format";
 import { exportRowsCSV, exportRowsPDF } from "../utils/export";
 import { Field, EmptyState, inputCls } from "../components/ui";
 
-/* ================================================================
-   REPORTS
-================================================================= */
 const REPORT_TYPES = [
   { key: "all", label: "All" },
   { key: "inquiries", label: "Caller inquiries" },
@@ -20,9 +17,6 @@ const REPORT_PERIODS = [
 ];
 const COMPLAINT_STATUSES = ["Open", "Resolved"];
 
-// Builds an exportable report — who called, about which auction/batch, on
-// what dates — so admin can hand a company its own caller-activity report
-// as a CSV (opens in Excel) or a printable PDF.
 export function CustomReportBuilder({ inquiries, appointments, complaints }) {
   const companyOptions = useMemo(() => {
     const set = new Set(inquiries.map((i) => i.company || "Auction Ethiopia (general)"));
@@ -41,16 +35,8 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
   const [rStatuses, setRStatuses] = useState([]);
   const [previewRows, setPreviewRows] = useState(null);
 
-  // Company / auction / batch apply to anything tied to a specific auction —
-  // that's inquiries, visitations, and "All" (which mixes both in). Only
-  // complaints have no company/auction/batch of their own.
   const usesAuctionFields = rType !== "complaints";
-  // Priority exists on inquiries and complaints, not on visitations — hide
-  // it there rather than show a filter that can never match anything.
   const usesPriorityField = rType !== "visitations";
-  // When "All" is selected, narrowing to one record type (via the dropdown
-  // below) keeps the status checklist to that type's own statuses, instead
-  // of the huge combined list of every status from every type at once.
   const statusChoices = rType === "visitations" ? APPT_STATUSES
     : rType === "complaints" ? COMPLAINT_STATUSES
     : rType === "all"
@@ -83,9 +69,6 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
   function buildRows() {
     if (rType === "all") {
       const rows = [];
-      // Complaints don't carry a company/auction/batch of their own, so if
-      // any of those filters are narrowed down, complaints simply can't
-      // match and are left out of the combined result.
       const wantsAuctionSpecifics = rCompany !== "Any company" || rAuction !== "Any auction" || !!rBatch;
       if (rSubType === "all" || rSubType === "inquiries") {
         inquiries.forEach((r) => {
@@ -230,9 +213,7 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
   );
 }
 
-export function Reports({ inquiries, appointments, complaints }) {
-  // Operator performance now lives only on the Dashboard (request: keep it
-  // to one place) — this page is just the custom report builder + exports.
+export default function Reports({ inquiries, appointments, complaints }) {
   return (
     <div>
       <CustomReportBuilder inquiries={inquiries} appointments={appointments} complaints={complaints} />

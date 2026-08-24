@@ -1,3 +1,41 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* Tailwind v4: map the `dark:` variant to our data-theme attribute
+   (toggled from ProfileMenu) instead of the OS prefers-color-scheme. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+:root {
+  --ink: #14171C; --paper: #EFF1EE; --panel: #FFFFFF; --border: #DEE0DA;
+  --text: #1B1D1F; --text-2: #63675F; --text-3: #8B8E86;
+  --brass: #AD7F27; --brass-dark: #8A6520; --brass-bg: #F4EBD6;
+  --green: #2F6F4E; --green-bg: #E2EFE6;
+  --amber: #A66A16; --amber-bg: #F6EAD3;
+  --red: #B23A2E; --red-bg: #F7E2DF;
+  --blue: #2C5F8A; --blue-bg: #E1ECF3;
+  --gray: #6B6F68; --gray-bg: #E7E8E3;
+}
+
+[data-theme="dark"] {
+  --paper: #000000; --panel: #121212; --border: #2C2C2C;
+  --text: #F5F5F3; --text-2: #B8BAB6; --text-3: #87897F; --gray-bg: #1D1D1D;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--paper);
+  color: var(--text);
+  overflow-x: hidden;
+}
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
+a { color: inherit; }

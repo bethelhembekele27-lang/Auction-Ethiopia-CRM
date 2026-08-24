@@ -4,13 +4,9 @@ import { logo } from "../constants/assets";
 import { NotificationBell } from "./NotificationBell";
 import { ProfileMenu } from "./ProfileMenu";
 
-/* ================================================================
-   HEADER / TOP NAVBAR + PROFILE MENU
-================================================================= */
-export function Header({ page, setPage, role, username, theme, setTheme, onLogout, onOpenAccountSettings, bellItems, onGoToNotification }) {
+export default function Header({ page, setPage, role, username, theme, setTheme, onLogout, onOpenAccountSettings, bellItems, onGoToNotification }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // Close the dropdown whenever a link is used, on either layout.
   const goTo = (key) => {
     setPage(key);
     setMobileNavOpen(false);

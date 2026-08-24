@@ -1,24 +1,16 @@
 import { useState } from "react";
 import { Stamp, Field, Modal, inputCls } from "../components/ui";
+import { escalations as escalationsApi } from "../api";
 
-/* ================================================================
-   MANAGER REQUESTS  (formerly "Escalations")
-   Where a call operator's "problem is on the auction company, not
-   something I can fix" flags land for the Auction Manager to act on.
-   Resolving one here fires the fix notification back to the exact
-   operator who raised it (see hooks/useNotifications.js). Administrator
-   does not have access to this page — it's a working channel between
-   operators and the Auction Manager only.
-================================================================= */
-export function Escalations({ escalations, setEscalations, addAudit, session }) {
+export default function Escalations({ escalations, setEscalations, addAudit, session }) {
   const [resolveTarget, setResolveTarget] = useState(null);
   const [resolveNote, setResolveNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const isOperator = session && session.role === "call_operator";
   const canResolve = session && session.role === "auction_manager";
 
-  // Operators only ever see the requests they personally raised; the
-  // Auction Manager / Administrator see everything and can resolve them.
   const visible = isOperator
     ? escalations.filter((e) => e.createdByUsername === session.username)
     : escalations;
@@ -26,12 +18,21 @@ export function Escalations({ escalations, setEscalations, addAudit, session }) 
   const open = visible.filter((e) => e.status === "Open");
   const resolved = visible.filter((e) => e.status === "Resolved");
 
-  function openResolve(e) { setResolveTarget(e); setResolveNote(""); }
-  function saveResolve() {
+  function openResolve(e) { setResolveTarget(e); setResolveNote(""); setSaveError(""); }
+  async function saveResolve() {
     if (!resolveNote.trim()) return;
-    setEscalations((prev) => prev.map((e) => (e.id === resolveTarget.id ? { ...e, status: "Resolved", resolutionNote: resolveNote.trim(), resolvedAt: Date.now() } : e)));
-    addAudit("Resolve manager request", "Open", "Resolved", `${resolveTarget.id} · notified ${resolveTarget.operatorName}`);
-    setResolveTarget(null);
+    setSaving(true);
+    setSaveError("");
+    try {
+      const updated = await escalationsApi.resolveEscalation(resolveTarget.id, resolveNote.trim());
+      setEscalations((prev) => prev.map((e) => (e.id === resolveTarget.id ? { ...e, ...updated } : e)));
+      addAudit("Resolve manager request", "Open", "Resolved", `${resolveTarget.id} · notified ${resolveTarget.operatorName}`);
+      setResolveTarget(null);
+    } catch (err) {
+      setSaveError(err.body?.message || "Couldn't resolve — try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function EscTable({ rows, showResolve }) {
@@ -81,8 +82,9 @@ export function Escalations({ escalations, setEscalations, addAudit, session }) 
                 <textarea className={inputCls} rows={3} value={resolveNote} onChange={(e) => setResolveNote(e.target.value)} placeholder="What you checked / fixed — this goes back to the operator." />
               </Field>
             </div>
+            {saveError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{saveError}</div>}
             <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" onClick={saveResolve}>Send fix notification</button>
+              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={saving} onClick={saveResolve}>{saving ? "Sending…" : "Send fix notification"}</button>
               <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setResolveTarget(null)}>Cancel</button>
             </div>
           </>

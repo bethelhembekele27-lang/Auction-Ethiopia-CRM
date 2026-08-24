@@ -1,19 +1,29 @@
 import { useState } from "react";
+import { auth } from "../api";
 
-export function AccountSettingsModal({ username, onSave, onClose }) {
+export default function AccountSettingsModal({ username, onSave, onClose }) {
   const [name, setName] = useState(username);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  function handleSave() {
+  async function handleSave() {
     if (newPassword && newPassword !== confirmPassword) { setError("Passwords don't match."); return; }
     if (!name.trim()) { setError("Name can't be empty."); return; }
     setError("");
-    onSave(name.trim());
-    setSaved(true);
-    setTimeout(onClose, 900);
+    setSaving(true);
+    try {
+      await auth.updateMe({ username: name.trim(), password: newPassword || undefined });
+      onSave(name.trim());
+      setSaved(true);
+      setTimeout(onClose, 900);
+    } catch (err) {
+      setError(err.body?.message || "Couldn't save changes — try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -33,7 +43,7 @@ export function AccountSettingsModal({ username, onSave, onClose }) {
           {error && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md mt-3.5" style={{ marginBottom: 12 }}>{error}</div>}
           {saved && <div className="bg-[color:var(--green-bg)] text-[color:var(--green)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>Saved.</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" onClick={handleSave}>Save changes</button>
+            <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={saving} onClick={handleSave}>{saving ? "Saving…" : "Save changes"}</button>
             <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={onClose}>Cancel</button>
           </div>
         </div>

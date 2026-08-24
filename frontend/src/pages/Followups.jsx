@@ -2,20 +2,18 @@ import { useState, useMemo } from "react";
 import { FOLLOWUP_STATUSES, FOLLOWUP_STAMP } from "../constants/lookups";
 import { fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
+import { followups as followupsApi } from "../api";
 
-/* ================================================================
-   FOLLOW-UPS
-================================================================= */
-export function Followups({ followups, setFollowups, canEdit, addAudit }) {
+export default function Followups({ followups, setFollowups, canEdit, addAudit }) {
   const [fStatus, setFStatus] = useState("All");
   const [fCompany, setFCompany] = useState("All");
   const [fGuide, setFGuide] = useState("All");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  // Company/guide options are drawn from whichever follow-ups carry that
-  // context (visit-triggered ones do; inquiry-only ones may not).
   const companyOptions = useMemo(() => [...new Set(followups.filter((f) => f.company).map((f) => f.company))], [followups]);
   const guideOptions = useMemo(() => [...new Set(followups.filter((f) => f.guideName).map((f) => f.guideName))], [followups]);
 
@@ -27,20 +25,27 @@ export function Followups({ followups, setFollowups, canEdit, addAudit }) {
   });
   const sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  // The status dropdown only ever offers the three real outcomes — "Pending"
-  // is just the un-actioned starting state, never something an operator
-  // picks, so it isn't pre-selected here either: they have to choose one.
   function openEdit(f) {
     setEditing(f.id);
     setDraft({ status: FOLLOWUP_STATUSES.includes(f.status) ? f.status : "", notes: f.notes || "" });
+    setSaveError("");
     setModalOpen(true);
   }
-  function save() {
-    if (!draft.status) return; // status is required, not optional
+  async function save() {
+    if (!draft.status) return;
     const prev = followups.find((x) => x.id === editing);
-    setFollowups((p) => p.map((x) => (x.id === editing ? { ...x, status: draft.status, notes: draft.notes } : x)));
-    if (prev) addAudit("Update follow-up", prev.status, draft.status, `${prev.id} · ${prev.callerName}`);
-    setModalOpen(false);
+    setSaving(true);
+    setSaveError("");
+    try {
+      const updated = await followupsApi.updateFollowup(editing, { status: draft.status, notes: draft.notes });
+      setFollowups((p) => p.map((x) => (x.id === editing ? { ...x, ...updated } : x)));
+      if (prev) addAudit("Update follow-up", prev.status, draft.status, `${prev.id} · ${prev.callerName}`);
+      setModalOpen(false);
+    } catch (err) {
+      setSaveError(err.body?.message || "Couldn't save — try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -97,8 +102,9 @@ export function Followups({ followups, setFollowups, canEdit, addAudit }) {
                 <textarea className={inputCls} rows={3} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
               </Field>
             </div>
+            {saveError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{saveError}</div>}
             <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={!draft.status} onClick={save}>Save changes</button>
+              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={!draft.status || saving} onClick={save}>{saving ? "Saving…" : "Save changes"}</button>
               <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
             </div>
           </>

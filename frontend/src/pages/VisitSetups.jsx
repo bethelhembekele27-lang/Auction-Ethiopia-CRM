@@ -2,28 +2,13 @@ import { useState, useMemo } from "react";
 import { DAYS_OF_WEEK } from "../constants/lookups";
 import { todayISO, fmtDate, isIsoDate } from "../utils/format";
 import { Field, Modal, EmptyState, inputCls } from "../components/ui";
+import { visitSetups as visitSetupsApi } from "../api";
 
-/* ================================================================
-   VISIT SETUP
-   Registered once per company + batch: where the items are, what's
-   out for auction, and the guide who walks visitors through them in
-   person (with phone + which days/hours he's available). Visitations
-   are then booked AGAINST one of these, so the operator only has to
-   set this up once instead of re-typing it for every visitor call.
-================================================================= */
 const emptyVisitSetup = {
   id: "", company: "", batch: "", date: "", address: "", items: "",
   guideName: "", guidePhone: "", guideDays: [], guideTimeFrom: "", guideTimeTo: "",
 };
 
-// Once a visitor's visit is registered, they automatically go onto the
-// follow-up list so an operator calls back afterward and asks what they
-// thought of the items — follow-up date defaults to the day after the
-// visit. assignedOperator is the OPERATOR who registered the visit (not
-// the guide), since operators are who follow-up reminders page. Lives
-// here (rather than in Visitations.jsx) since it's declared right after
-// VisitSetups in the original file, but it's used by both Visitations.jsx
-// and Inquiries.jsx, so it's exported.
 export function autoFollowupForVisit(visit, genId, operatorName) {
   const base = new Date((visit.visitDate || todayISO()) + "T00:00:00");
   const next = isNaN(base) ? new Date() : new Date(base.getTime() + 86400000);
@@ -43,12 +28,14 @@ export function autoFollowupForVisit(visit, genId, operatorName) {
   };
 }
 
-export function VisitSetups({ visitSetups, setVisitSetups, genId, canEdit, addAudit, session }) {
+export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdit, addAudit, session }) {
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyVisitSetup);
   const [dateMode, setDateMode] = useState("calendar");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const filtered = useMemo(() => {
     if (!query) return visitSetups;
@@ -59,22 +46,31 @@ export function VisitSetups({ visitSetups, setVisitSetups, genId, canEdit, addAu
     );
   }, [visitSetups, query]);
 
-  function openNew() { setEditing(null); setDraft(emptyVisitSetup); setDateMode("calendar"); setModalOpen(true); }
-  function openEdit(v) { setEditing(v.id); setDraft({ ...v }); setDateMode(isIsoDate(v.date) || !v.date ? "calendar" : "manual"); setModalOpen(true); }
+  function openNew() { setEditing(null); setDraft(emptyVisitSetup); setDateMode("calendar"); setSaveError(""); setModalOpen(true); }
+  function openEdit(v) { setEditing(v.id); setDraft({ ...v }); setDateMode(isIsoDate(v.date) || !v.date ? "calendar" : "manual"); setSaveError(""); setModalOpen(true); }
   function toggleDay(day) {
     setDraft((d) => ({ ...d, guideDays: d.guideDays.includes(day) ? d.guideDays.filter((x) => x !== day) : [...d.guideDays, day] }));
   }
-  function save() {
+  async function save() {
     if (!draft.company || !draft.batch || !draft.guideName || !draft.guidePhone) return;
-    if (editing) {
-      setVisitSetups((prev) => prev.map((v) => (v.id === editing ? { ...draft } : v)));
-      addAudit("Edit visit setup", "—", editing, `${draft.company} · ${draft.batch}`);
-    } else {
-      const record = { ...draft, id: genId("VST", "vst"), createdBy: (session && session.operatorName) || session.username, createdDate: todayISO() };
-      setVisitSetups((prev) => [record, ...prev]);
-      addAudit("Create visit setup", "—", `${record.id} created`, `${record.company} · ${record.batch} — guide ${record.guideName}`);
+    setSaving(true);
+    setSaveError("");
+    try {
+      if (editing) {
+        const updated = await visitSetupsApi.updateVisitSetup(editing, draft);
+        setVisitSetups((prev) => prev.map((v) => (v.id === editing ? { ...v, ...updated } : v)));
+        addAudit("Edit visit setup", "—", editing, `${draft.company} · ${draft.batch}`);
+      } else {
+        const created = await visitSetupsApi.createVisitSetup(draft);
+        setVisitSetups((prev) => [created, ...prev]);
+        addAudit("Create visit setup", "—", `${created.id} created`, `${created.company} · ${created.batch} — guide ${created.guideName}`);
+      }
+      setModalOpen(false);
+    } catch (err) {
+      setSaveError(err.body?.message || "Couldn't save — try again.");
+    } finally {
+      setSaving(false);
     }
-    setModalOpen(false);
   }
 
   return (
@@ -135,8 +131,9 @@ export function VisitSetups({ visitSetups, setVisitSetups, genId, canEdit, addAu
             </div>
           </Field>
         </div>
+        {saveError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{saveError}</div>}
         <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" onClick={save}>{editing ? "Save changes" : "Create visit setup"}</button>
+          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={saving} onClick={save}>{saving ? "Saving…" : editing ? "Save changes" : "Create visit setup"}</button>
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
