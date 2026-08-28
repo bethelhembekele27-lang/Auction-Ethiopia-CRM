@@ -118,3 +118,4 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
     "EXCEPTION_HANDLER": "crm.exceptions.api_exception_handler",
 }
+STATIC_ROOT = BASE_DIR / 'staticfiles'
