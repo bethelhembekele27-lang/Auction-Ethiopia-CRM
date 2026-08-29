@@ -26,6 +26,7 @@ from .views import (
 urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
+    path('auth/google/', GoogleLoginView.as_view(), name='auth-google'),
 
     path('roles/', RoleListCreateView.as_view(), name='role-list-create'),
     path('employees/', EmployeeListCreateView.as_view(), name='employee-list-create'),
@@ -51,9 +52,4 @@ urlpatterns = [
     path('escalations/<str:escalation_id>/resolve/', EscalationResolveView.as_view(), name='escalation-resolve'),
 
     path('audit/', AuditLogListView.as_view(), name='audit-list'),
-    
-  
-
-# ...inside urlpatterns:
-    path('auth/google/', GoogleLoginView.as_view(), name='auth-google'),
 ]
