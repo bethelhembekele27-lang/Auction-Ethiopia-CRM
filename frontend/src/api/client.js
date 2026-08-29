@@ -2,32 +2,32 @@
 // turns non-2xx responses into thrown errors. Every other file in api/
 // goes through this instead of calling fetch() directly.
 
-const BASE_URL = process.env.REACT_APP_API_BASE_URL || "/api";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 function getToken() {
-  return localStorage.getItem("auth_token");
+  return localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
 }
 
 export class ApiError extends Error {
   constructor(status, body) {
-    super((body && body.message) || Request failed with status ${status});
+    super((body && body.message) || `Request failed with status ${status}`);
     this.status = status;
     this.body = body;
   }
 }
 
 async function request(path, { method = "GET", body, params } = {}) {
-  let url = ${BASE_URL}${path};
+  let url = `${BASE_URL}${path}`;
   if (params) {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
     ).toString();
-    if (qs) url += ?${qs};
+    if (qs) url += `?${qs}`;
   }
 
   const headers = { "Content-Type": "application/json" };
   const token = getToken();
-  if (token) headers.Authorization = Bearer ${token};
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(url, {
     method,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { auth } from "../api";
 import { logo } from "../constants/assets";
 
@@ -9,6 +9,57 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const googleButtonRef = useRef(null);
+
+  // Google Identity Services button — the script tag lives in index.html
+  // (loaded once, globally). We only initialize + render the button here,
+  // once the SDK has actually loaded (hence the poll below rather than
+  // assuming window.google exists on first render).
+  useEffect(() => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) return; // Google login not configured — button just won't render
+
+    let cancelled = false;
+
+    function tryInit() {
+      if (cancelled) return;
+      if (!window.google || !window.google.accounts || !googleButtonRef.current) {
+        setTimeout(tryInit, 100);
+        return;
+      }
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleCredential,
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline",
+        size: "large",
+        width: 316,
+        text: "signin_with",
+      });
+    }
+    tryInit();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleGoogleCredential(response) {
+    setGoogleLoading(true);
+    setError("");
+    try {
+      const { token, user } = await auth.loginWithGoogle(response.credential);
+      // Google-authenticated sessions default to sessionStorage, same as
+      // an unchecked "Remember me" — no separate opt-in UI for this path.
+      sessionStorage.setItem("auth_token", token);
+      onLogin(user.role, user.username, user.operatorName || null);
+    } catch (err) {
+      setError(err.body?.message || "Google sign-in failed — this account may not be linked to an employee record.");
+    } finally {
+      setGoogleLoading(false);
+    }
+  }
 
   async function attemptLogin() {
     if (!username.trim() || !password) return;
@@ -34,6 +85,19 @@ export default function Login({ onLogin }) {
         <img src={logo} alt="Auction Ethiopia S.C." style={{ maxWidth: 240, width: "100%", height: "auto", objectFit: "contain", display: "block", margin: "0 auto 20px" }} />
         <h2 style={{ margin: "0 0 4px", textAlign: "center" }}>Sign in</h2>
         <div style={{ fontSize: 12.5, color: "var(--text-2)", textAlign: "center", marginBottom: 22 }}>CRM &amp; Call Center</div>
+
+        {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+          <>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 16, opacity: googleLoading ? 0.6 : 1, pointerEvents: googleLoading ? "none" : "auto" }}>
+              <div ref={googleButtonRef} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 18px", color: "var(--text-3)", fontSize: 12 }}>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              or sign in with username
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            </div>
+          </>
+        )}
 
         <label className="block text-xs text-[color:var(--text-2)] uppercase tracking-[0.04em] mb-1.5">Username</label>
         <input className="w-full font-sans text-sm px-3 py-2.5 border border-[color:var(--border)] rounded-md bg-[color:var(--panel)] text-[color:var(--text)]" value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={handleKeyDown} placeholder="e.g. selamawit" autoFocus />

@@ -35,7 +35,7 @@ export default function Dashboard({ inquiries, followups, appointments, complain
             <div className="flex items-center gap-2.5 my-2.5 text-[13px]" key={d.name}>
               <span className="w-[150px] shrink-0 text-[color:var(--text-2)] whitespace-nowrap overflow-hidden text-ellipsis">{d.name}</span>
               <div className="flex-1 h-2 bg-[color:var(--gray-bg)] rounded overflow-hidden">
-                <div className="h-full bg-[color:var(--brass)] rounded" style={{ width: ${(d.value / inquiries.length) * 100}% }}></div>
+                <div className="h-full bg-[color:var(--brass)] rounded"style={{ width: `${(d.value / inquiries.length) * 100}%` }}></div>
               </div>
               <span className="w-9 text-right font-mono text-[12.5px] text-[color:var(--text-2)]">{d.value}</span>
             </div>
@@ -77,7 +77,7 @@ export default function Dashboard({ inquiries, followups, appointments, complain
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div className="flex-1 h-2 bg-[color:var(--gray-bg)] rounded overflow-hidden" style={{ width: 80 }}>
-                        <div className="h-full bg-[color:var(--brass)] rounded" style={{ width: ${o.rate}% }}></div>
+                        <div className="h-full bg-[color:var(--brass)] rounded" style={{ width: `${o.rate}%` }}></div>
                       </div>
                       <span className="font-mono" style={{ fontSize: 12 }}>{o.rate}%</span>
                     </div>

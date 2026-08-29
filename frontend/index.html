@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Auction Ethiopia — CRM / Call Center</title>
+    <!-- Google Identity Services — loaded once, globally. Login.jsx waits
+         for window.google to exist before calling initialize()/renderButton(). -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <div id="root"></div>
