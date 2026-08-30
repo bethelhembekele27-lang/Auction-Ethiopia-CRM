@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { AUCTIONS, PRIORITIES, STATUSES, APPT_STATUSES } from "../constants/lookups";
-import { todayISO, fmtDate, dateInPreset } from "../utils/format";
+import { todayISO, fmtDate } from "../utils/format";
 import { exportRowsCSV, exportRowsPDF } from "../utils/export";
 import { Field, EmptyState, inputCls } from "../components/ui";
 
@@ -9,11 +9,6 @@ const REPORT_TYPES = [
   { key: "inquiries", label: "Caller inquiries" },
   { key: "visitations", label: "Visitations" },
   { key: "complaints", label: "Complaints" },
-];
-const REPORT_PERIODS = [
-  { key: "today", label: "Today" },
-  { key: "week", label: "This week" },
-  { key: "month", label: "This month" },
 ];
 const COMPLAINT_STATUSES = ["Open", "Resolved"];
 
@@ -24,7 +19,6 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
   }, [inquiries]);
 
   const [rType, setRType] = useState("inquiries");
-  const [rPeriod, setRPeriod] = useState("today");
   const [rCompany, setRCompany] = useState("Any company");
   const [rAuction, setRAuction] = useState("Any auction");
   const [rBatch, setRBatch] = useState("");
@@ -50,10 +44,12 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
     setRStatuses((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
 
+  // Date filtering is now purely Date-from / Date-to (CHANGES.md item 7)
+  // — if both are left blank, every matching record is included
+  // regardless of date, rather than silently defaulting to "Today".
   function passesCommonFilters(r, dateOnly) {
     if (rFrom && dateOnly < rFrom) return false;
     if (rTo && dateOnly > rTo) return false;
-    if (!rFrom && !rTo && !dateInPreset(dateOnly, rPeriod)) return false;
     if (rStatuses.length && !rStatuses.includes(r.status)) return false;
     if (rPriority !== "Any priority" && r.priority !== rPriority) return false;
     return true;
@@ -128,11 +124,7 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
             {REPORT_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
           </select>
         </Field>
-        <Field label="Period">
-          <select className={inputCls} value={rPeriod} onChange={(e) => setRPeriod(e.target.value)}>
-            {REPORT_PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-          </select>
-        </Field>
+        <Field label="Date from (optional)"><input type="date" className={inputCls} value={rFrom} onChange={(e) => setRFrom(e.target.value)} /></Field>
         {usesAuctionFields && (
           <Field label="Company / client (optional)">
             <select className={inputCls} value={rCompany} onChange={(e) => setRCompany(e.target.value)}>
@@ -140,6 +132,7 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
             </select>
           </Field>
         )}
+        <Field label="Date to (optional)"><input type="date" className={inputCls} value={rTo} onChange={(e) => setRTo(e.target.value)} /></Field>
         {usesAuctionFields && (
           <Field label="Auction (optional)">
             <select className={inputCls} value={rAuction} onChange={(e) => setRAuction(e.target.value)}>
@@ -159,8 +152,6 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
             </select>
           </Field>
         )}
-        <Field label="Date from (optional)"><input type="date" className={inputCls} value={rFrom} onChange={(e) => setRFrom(e.target.value)} /></Field>
-        <Field label="Date to (optional)"><input type="date" className={inputCls} value={rTo} onChange={(e) => setRTo(e.target.value)} /></Field>
       </div>
       {rType === "all" && (
         <div style={{ marginBottom: 14, maxWidth: 260 }}>

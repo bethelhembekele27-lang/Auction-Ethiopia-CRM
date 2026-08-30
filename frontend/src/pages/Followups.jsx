@@ -52,7 +52,7 @@ export default function Followups({ followups, setFollowups, canEdit, addAudit }
     <div>
       <div className="flex flex-wrap gap-2 mb-4 items-center">
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option>All</option><option>Pending</option><option>Satisfied</option><option>Not Satisfied</option><option>No Show</option>
+          <option value="All">All statuses</option><option>Pending</option><option>Satisfied</option><option>Not Satisfied</option><option>No Show</option>
         </select>
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fCompany} onChange={(e) => setFCompany(e.target.value)} title="Filter by company">
           <option value="All">All companies</option>{companyOptions.map((c) => <option key={c}>{c}</option>)}

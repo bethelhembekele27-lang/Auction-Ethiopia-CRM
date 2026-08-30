@@ -40,12 +40,11 @@ export default function NotificationsPage({ items, onClear, goTo }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
-        <div style={{ fontSize: 13, color: "var(--text-2)" }}>Reminders and updates addressed to you.</div>
-        {items.length > 0 && (
+      {items.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-transparent" onClick={() => items.forEach((n) => onClear(n.id))}>Clear all</button>
-        )}
-      </div>
+        </div>
+      )}
       {!items.length ? (
         <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] p-[18px] flex items-center gap-3.5 py-[22px] px-5">
           <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-full text-xs shrink-0 w-9 h-9 text-base" style={{ background: "var(--green-bg)", color: "var(--green)" }}>✓</span>

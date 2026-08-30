@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
-import { CATEGORIES, PRIORITIES, STATUSES, OPERATORS, COMPLAINT_CATEGORIES, DEPARTMENTS, APPT_STATUSES, PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
+import { CATEGORIES, PRIORITIES, STATUSES, OPERATORS, COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
 import { todayISO, fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { emptyAppt } from "./Visitations";
+import { isSetupOpen } from "./VisitSetups";
 import { emptyComplaint } from "./Complaints";
-import { inquiries as inquiriesApi, followups as followupsApi, appointments as appointmentsApi, complaints as complaintsApi, escalations as escalationsApi } from "../api";
+import { inquiries as inquiriesApi, appointments as appointmentsApi, followups as followupsApi, complaints as complaintsApi, escalations as escalationsApi } from "../api";
 
 const emptyInquiry = {
   id: "", callerName: "", phone: "", company: "", auction: "", batch: "", category: CATEGORIES[0],
@@ -12,7 +13,7 @@ const emptyInquiry = {
   followUpDate: "", resolutionNotes: "", resolvedDate: "", attachments: [],
 };
 
-export default function Inquiries({ inquiries, setInquiries, setFollowups, setAppointments, setComplaints, setEscalations, session, canEdit, addAudit }) {
+export default function Inquiries({ inquiries, setInquiries, setFollowups, setAppointments, setComplaints, setEscalations, visitSetups, session, canEdit, addAudit }) {
   const [query, setQuery] = useState("");
   const [fCategory, setFCategory] = useState("All");
   const [fPriority, setFPriority] = useState("All");
@@ -25,11 +26,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   const [attachName, setAttachName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-
-  const [fuModalOpen, setFuModalOpen] = useState(false);
-  const [fuDraft, setFuDraft] = useState(null);
-  const [fuSaving, setFuSaving] = useState(false);
-  const [fuError, setFuError] = useState("");
 
   const [apptModalOpen, setApptModalOpen] = useState(false);
   const [apptDraft, setApptDraft] = useState(null);
@@ -45,6 +41,19 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   const [escDraft, setEscDraft] = useState(null);
   const [escSaving, setEscSaving] = useState(false);
   const [escError, setEscError] = useState("");
+
+  // Same open-setups-only pattern as Visitations.jsx, since "Book
+  // visitation" now opens the identical Register-visitor flow (CHANGES.md
+  // item 5) instead of its own free-text modal.
+  const openVisitSetups = useMemo(() => (visitSetups || []).filter(isSetupOpen), [visitSetups]);
+  const setupOptions = useMemo(() => {
+    if (apptDraft?.setupId && !openVisitSetups.some((v) => v.id === apptDraft.setupId)) {
+      const current = (visitSetups || []).find((v) => v.id === apptDraft.setupId);
+      if (current) return [...openVisitSetups, current];
+    }
+    return openVisitSetups;
+  }, [openVisitSetups, visitSetups, apptDraft]);
+  const selectedSetup = apptDraft ? (visitSetups || []).find((v) => v.id === apptDraft.setupId) : null;
 
   const filtered = useMemo(() => {
     return inquiries.filter((i) => {
@@ -110,32 +119,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     setAttachName("");
   }
 
-  function openFollowupFor(inq, visitSetups) {
-    setFuDraft({
-      inquiryId: inq.id, callerName: inq.callerName, date: inq.followUpDate || todayISO(),
-      reminder: true, assignedOperator: inq.operator, status: "Pending", notes: "",
-      company: inq.company || "", batch: "", guideName: "",
-    });
-    setFuError("");
-    setFuModalOpen(true);
-  }
-  async function saveFollowup() {
-    if (!fuDraft.date) return;
-    setFuSaving(true);
-    setFuError("");
-    try {
-      const created = await followupsApi.createFollowup({ ...fuDraft, createdDate: todayISO() });
-      setFollowups((prev) => [created, ...prev]);
-      setInquiries((prev) => prev.map((i) => (i.id === fuDraft.inquiryId ? { ...i, followUpDate: fuDraft.date } : i)));
-      addAudit("Create follow-up", "—", `${created.id} created`, `Reminder for ${created.callerName} on ${fmtDate(created.date)}`);
-      setFuModalOpen(false);
-    } catch (err) {
-      setFuError(err.body?.message || "Couldn't create follow-up — try again.");
-    } finally {
-      setFuSaving(false);
-    }
-  }
-
   function openEscalationFor(inq) {
     if (inq.priority !== "Urgent") return;
     setEscDraft({ inquiryId: inq.id, callerName: inq.callerName, note: "" });
@@ -162,27 +145,40 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     }
   }
 
-  function openVisitationFor(source) {
+  // Rebuilt to match Visitations.jsx's Register-visitor flow exactly
+  // (CHANGES.md item 5) — pick a registered Auction visit setup, which
+  // fills in company/batch/guide/address automatically, rather than the
+  // old free-text Assigned staff field. No Status field here either,
+  // since this always creates a new visitation (never edits one), and
+  // new visitations start as "Requested" regardless (item 2).
+  function openVisitationFor(inq) {
     setApptDraft({
       ...emptyAppt,
-      auction: source.auction || "",
-      visitorName: source.callerName || "",
-      phone: source.phone || "",
-      company: source.company || "",
-      assignedStaff: (session && session.operatorName) || "",
-      notes: source.batch ? `Regarding ${source.batch}` : "",
+      auction: inq.auction || "",
+      visitorName: inq.callerName || "",
+      phone: inq.phone || "",
+      notes: inq.batch ? `Regarding ${inq.batch}` : "",
     });
     setApptError("");
     setApptModalOpen(true);
   }
+  function applySetup(setupId) {
+    const s = (visitSetups || []).find((v) => v.id === setupId);
+    if (!s) { setApptDraft((d) => ({ ...d, setupId: "" })); return; }
+    setApptDraft((d) => ({
+      ...d, setupId: s.id, company: s.company, batch: s.batch,
+      guideName: s.guideName, guidePhone: s.guidePhone, address: s.address, items: s.items,
+      assignedStaff: s.guideName,
+    }));
+  }
   async function saveVisitation() {
-    if (!apptDraft.visitorName || !apptDraft.visitDate) return;
+    if (!apptDraft.visitorName || !apptDraft.phone || !apptDraft.visitDate) return;
     setApptSaving(true);
     setApptError("");
     try {
       const created = await appointmentsApi.createAppointment(apptDraft);
       setAppointments((prev) => [created, ...prev]);
-      addAudit("Book visitation", "—", `${created.id} created`, `${created.visitorName} for ${created.auction} (from inquiry)`);
+      addAudit("Book visitation", "—", `${created.id} created`, `${created.visitorName} for ${created.company || created.auction} (from inquiry)`);
       // Server auto-creates the day-after follow-up (see API_SPEC.md §4) —
       // re-fetch follow-ups so it shows up right away.
       try {
@@ -230,16 +226,16 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       <div className="flex flex-wrap gap-2 mb-4 items-center">
         <input className="w-[220px] font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" placeholder="Search name, phone, company, ID…" value={query} onChange={(e) => setQuery(e.target.value)} />
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
-          <option>All</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+          <option value="All">All categories</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}
         </select>
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fPriority} onChange={(e) => setFPriority(e.target.value)}>
-          <option>All</option>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+          <option value="All">All priorities</option>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}
         </select>
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option>All</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}
+          <option value="All">All statuses</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}
         </select>
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fOperator} onChange={(e) => setFOperator(e.target.value)}>
-          <option>All</option>{OPERATORS.map((o) => <option key={o}>{o}</option>)}
+          <option value="All">All operators</option>{OPERATORS.map((o) => <option key={o}>{o}</option>)}
         </select>
         {session.role === "call_operator" && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" style={{ marginLeft: "auto" }} onClick={openNew}>+ New inquiry</button>}
       </div>
@@ -262,7 +258,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
                       <div className="flex gap-1.5 flex-wrap">
                         {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openEdit(i)}>Edit</button>}
-                        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openFollowupFor(i)}>Follow-up</button>}
                         {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openVisitationFor(i)}>Book visitation</button>}
                         {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openComplaintFor(i)}>Complaint</button>}
                         {canEdit && session.role === "call_operator" && i.priority === "Urgent" && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-[color:var(--red-bg)] text-[color:var(--red)] border-[color:var(--red)]" onClick={() => openEscalationFor(i)}>Send to manager</button>}
@@ -329,41 +324,36 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
         </div>
       </Modal>
 
-      <Modal open={fuModalOpen} onClose={() => setFuModalOpen(false)} title="Create follow-up">
-        {fuDraft && (
-          <>
-            <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
-              <Field label="Caller"><input className={inputCls} value={fuDraft.callerName} disabled /></Field>
-              <Field label="Follow-up date"><input type="date" className={inputCls} value={fuDraft.date} onChange={(e) => setFuDraft({ ...fuDraft, date: e.target.value })} /></Field>
-              <Field label="Assigned operator"><select className={inputCls} value={fuDraft.assignedOperator} onChange={(e) => setFuDraft({ ...fuDraft, assignedOperator: e.target.value })}>{OPERATORS.map((o) => <option key={o}>{o}</option>)}</select></Field>
-              <Field label="Notes" full><textarea className={inputCls} rows={2} value={fuDraft.notes} onChange={(e) => setFuDraft({ ...fuDraft, notes: e.target.value })} /></Field>
-            </div>
-            {fuError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{fuError}</div>}
-            <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={fuSaving} onClick={saveFollowup}>{fuSaving ? "Creating…" : "Create follow-up"}</button>
-              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setFuModalOpen(false)}>Cancel</button>
-            </div>
-          </>
-        )}
-      </Modal>
-
-      <Modal open={apptModalOpen} onClose={() => setApptModalOpen(false)} title="New visitation" wide>
+      {/* Book visitation — now the identical Register-visitor flow used on
+          the Visitations page (CHANGES.md item 5): pick a registered
+          Auction visit setup rather than typing "Assigned staff" free text,
+          and no Status field since this is always a create, never an edit. */}
+      <Modal open={apptModalOpen} onClose={() => setApptModalOpen(false)} title="Register visitor" wide>
         {apptDraft && (
           <>
             <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
-              <Field label="Related auction (optional)"><input className={inputCls} placeholder="e.g. Vehicle Auction - July 2026 — leave blank if not about a specific auction" value={apptDraft.auction} onChange={(e) => setApptDraft({ ...apptDraft, auction: e.target.value })} /></Field>
+              <Field label="Auction visit setup" full>
+                <select className={inputCls} value={apptDraft.setupId} onChange={(e) => applySetup(e.target.value)}>
+                  <option value="">Select company / batch / guide…</option>
+                  {setupOptions.map((v) => <option key={v.id} value={v.id}>{v.company} — {v.batch} — Guide: {v.guideName}</option>)}
+                </select>
+              </Field>
+              {selectedSetup && (
+                <div className="col-span-2" style={{ fontSize: 12.5, color: "var(--text-2)", background: "var(--paper)", borderRadius: 6, padding: "8px 10px" }}>
+                  <b>{selectedSetup.address}</b> — {selectedSetup.items}<br />
+                  Guide {selectedSetup.guideName} ({selectedSetup.guidePhone}), {selectedSetup.guideTimeFrom}–{selectedSetup.guideTimeTo}
+                </div>
+              )}
               <Field label="Visitor name"><input className={inputCls} value={apptDraft.visitorName} onChange={(e) => setApptDraft({ ...apptDraft, visitorName: e.target.value })} /></Field>
               <Field label="Phone number"><input className={inputCls} value={apptDraft.phone} onChange={(e) => setApptDraft({ ...apptDraft, phone: e.target.value })} /></Field>
-              <Field label="Company (optional)"><input className={inputCls} value={apptDraft.company} onChange={(e) => setApptDraft({ ...apptDraft, company: e.target.value })} /></Field>
               <Field label="Visit date"><input type="date" className={inputCls} value={apptDraft.visitDate} onChange={(e) => setApptDraft({ ...apptDraft, visitDate: e.target.value })} /></Field>
               <Field label="Visit time"><input type="time" className={inputCls} value={apptDraft.visitTime} onChange={(e) => setApptDraft({ ...apptDraft, visitTime: e.target.value })} /></Field>
-              <Field label="Assigned staff"><input className={inputCls} value={apptDraft.assignedStaff} onChange={(e) => setApptDraft({ ...apptDraft, assignedStaff: e.target.value })} /></Field>
-              <Field label="Status"><select className={inputCls} value={apptDraft.status} onChange={(e) => setApptDraft({ ...apptDraft, status: e.target.value })}>{APPT_STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
               <Field label="Notes" full><textarea className={inputCls} rows={2} value={apptDraft.notes} onChange={(e) => setApptDraft({ ...apptDraft, notes: e.target.value })} /></Field>
             </div>
+            <div style={{ fontSize: 12, color: "var(--text-3)" }}>Registering this visitor automatically adds them to the Follow-ups list for a call back after the visit.</div>
             {apptError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{apptError}</div>}
             <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={apptSaving} onClick={saveVisitation}>{apptSaving ? "Booking…" : "Book visitation"}</button>
+              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={apptSaving} onClick={saveVisitation}>{apptSaving ? "Booking…" : "Register visitor"}</button>
               <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setApptModalOpen(false)}>Cancel</button>
             </div>
           </>

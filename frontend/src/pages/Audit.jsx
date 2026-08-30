@@ -1,64 +1,46 @@
-import { todayISO } from "../utils/format";
-import { NOTIFICATION_KIND_STYLE, timeAgo } from "../components/NotificationPopups";
+import { fmtDate } from "../utils/format";
+import { EmptyState } from "../components/ui";
 
-export default function NotificationsPage({ items, onClear, goTo }) {
-  const todayStr = todayISO();
-  const isToday = (ts) => new Date(ts).toISOString().slice(0, 10) === todayStr;
-  const today = items.filter((n) => isToday(n.createdAt));
-  const earlier = items.filter((n) => !isToday(n.createdAt));
-
-  function Group({ label, list }) {
-    if (!list.length) return null;
-    return (
-      <div style={{ marginBottom: 22 }}>
-        <div className="text-xs font-semibold uppercase tracking-[0.04em] text-[color:var(--text-2)] mt-[18px] mb-2" style={{ margin: "0 0 10px" }}>{label}</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {list.map((n) => {
-            const meta = NOTIFICATION_KIND_STYLE[n.kind] || NOTIFICATION_KIND_STYLE.reminder;
-            return (
-              <div className="flex gap-3.5 bg-[color:var(--panel)] border border-[color:var(--border)] border-l-[3px] border-l-[color:var(--border)] rounded-[10px] px-4 py-3.5" key={n.id} style={{ borderLeftColor: meta.color }}>
-                <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-full text-xs shrink-0 w-9 h-9 text-base" style={{ background: meta.bg, color: meta.color }}>{meta.icon}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="flex items-center justify-between gap-2.5 mb-[3px]">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: meta.color }}>{meta.label}</span>
-                    <span className="text-[11.5px] text-[color:var(--text-3)] whitespace-nowrap">{timeAgo(n.createdAt)}</span>
-                  </div>
-                  <div className="text-sm font-semibold mb-[3px]">{n.title}</div>
-                  <div className="text-[13px] text-[color:var(--text-2)] leading-normal">{n.body}</div>
-                  <div className="flex gap-1.5 flex-wrap" style={{ marginTop: 10 }}>
-                    {n.link && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-[color:var(--brass)] text-white border-[color:var(--brass)]" onClick={() => goTo(n.link)}>Open record</button>}
-                    <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-transparent" onClick={() => onClear(n.id)}>Clear</button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
+export default function Audit({ auditLog }) {
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
-        <div style={{ fontSize: 13, color: "var(--text-2)" }}>Reminders and updates addressed to you.</div>
-        {items.length > 0 && (
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-transparent" onClick={() => items.forEach((n) => onClear(n.id))}>Clear all</button>
-        )}
-      </div>
-      {!items.length ? (
-        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] p-[18px] flex items-center gap-3.5 py-[22px] px-5">
-          <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-full text-xs shrink-0 w-9 h-9 text-base" style={{ background: "var(--green-bg)", color: "var(--green)" }}>✓</span>
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 3 }}>You're all caught up</div>
-            <div style={{ fontSize: 13, color: "var(--text-2)" }}>New follow-up reminders and manager-request updates will appear here.</div>
+      {(!auditLog || auditLog.length === 0) ? (
+        <EmptyState text="No audit entries yet." />
+      ) : (
+        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+          <div style={{ overflowX: "auto" }}>
+            <table className="w-full border-collapse text-[13px] min-w-[900px]">
+              <thead>
+                <tr className="group">
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Time</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">User</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Role</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Action</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Previous</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">New</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Reason</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLog.map((e, idx) => (
+                  <tr key={idx} className="group">
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(e.d)}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{e.t}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{e.u}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{e.r}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{e.a}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{e.pv}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{e.nv}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] max-w-[240px]">{e.rs}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{e.ip}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      ) : (
-        <>
-          <Group label="Today" list={today} />
-          <Group label="Earlier" list={earlier} />
-        </>
       )}
     </div>
   );

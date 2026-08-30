@@ -24,10 +24,6 @@ export const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 export const STATUSES = ["Open", "Assigned", "Pending Follow-up", "Waiting for Customer", "Resolved", "Closed", "With Manager"];
 export const APPT_STATUSES = ["Requested", "Approved", "Confirmed", "Completed", "Cancelled"];
 
-// Days the escort/guide is available to walk visitors through the items —
-// used on Visit Setup records so the operator can see at a glance which
-// days/times a guide covers for a given company + batch.
-export const DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const COMPLAINT_CATEGORIES = ["Service Quality", "Billing / Fees", "Auction Process", "Staff Conduct", "Technical Issue", "Delivery / Item Condition", "Other"];
 export const DEPARTMENTS = ["Call Center", "Finance", "Auction Operations", "IT Support", "Logistics", "Management"];
 

@@ -39,3 +39,79 @@ body {
 
 h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
 a { color: inherit; }
+
+/* ============================================================
+   AUTOFILL OVERRIDE — Add this to frontend/src/root/index.css
+   (or wherever your global stylesheet lives).
+
+   Browsers (Chrome especially) tint autofilled inputs blue/yellow
+   by default, which is what's happening in the CRM login screenshot
+   — it's not something coded, it's the browser "helping." This
+   forces the fill color back to match the app's panel background,
+   using a huge inset box-shadow trick since background-color can't
+   override autofill directly.
+   ============================================================ */
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0px 1000px var(--panel) inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+  caret-color: var(--text);
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+[data-theme="dark"] input:-webkit-autofill,
+[data-theme="dark"] input:-webkit-autofill:hover,
+[data-theme="dark"] input:-webkit-autofill:focus,
+[data-theme="dark"] input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0px 1000px var(--panel) inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+}
+
+/* ============================================================
+   PRIMARY BUTTON FIX — Add this to the bottom of
+   frontend/src/root/index.css
+
+   Root cause: nearly every "primary" button in the app is built
+   from the same copy-pasted className string, e.g.:
+
+     "... bg-[color:var(--panel)] text-[color:var(--text)] ...
+          bg-[color:var(--brass)] text-white border-[color:var(--brass)]"
+
+   Two conflicting bg-* utilities (panel vs brass) and two
+   conflicting text-* utilities (text vs white) sit on the same
+   element. Tailwind generates one CSS rule per unique class, and
+   when two rules of equal specificity target the same property,
+   whichever rule Tailwind happened to compile LATER in the
+   stylesheet wins — not whichever class is written later in the
+   JSX string. That ordering is effectively arbitrary (depends on
+   which file Tailwind's scanner hits first), which is exactly why
+   some pages' buttons render fine and others come out blank: it's
+   the same bug, just landing on different sides of the coin per
+   page.
+
+   Rather than hand-edit every button across a dozen files, this
+   adds real CSS rules (not Tailwind-generated ones) that always
+   win regardless of Tailwind's internal ordering, for every color
+   combination currently used in the app.
+   ============================================================ */
+
+button.bg-\[color\:var\(--brass\)\] {
+  background-color: var(--brass) !important;
+  color: #fff !important;
+  border-color: var(--brass) !important;
+}
+
+button.bg-\[color\:var\(--red-bg\)\] {
+  background-color: var(--red-bg) !important;
+  color: var(--red) !important;
+  border-color: var(--red) !important;
+}
+
+button.bg-\[color\:var\(--ink\)\] {
+  background-color: var(--ink) !important;
+  color: #fff !important;
+  border-color: var(--ink) !important;
+}

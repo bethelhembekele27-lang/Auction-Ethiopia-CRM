@@ -1,13 +1,33 @@
 import { useState, useMemo } from "react";
-import { DAYS_OF_WEEK } from "../constants/lookups";
 import { todayISO, fmtDate, isIsoDate } from "../utils/format";
 import { Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { visitSetups as visitSetupsApi } from "../api";
 
 const emptyVisitSetup = {
-  id: "", company: "", batch: "", date: "", address: "", items: "",
-  guideName: "", guidePhone: "", guideDays: [], guideTimeFrom: "", guideTimeTo: "",
+  id: "", company: "", batch: "", dateFrom: "", dateTo: "", address: "", items: "",
+  guideName: "", guidePhone: "", guideTimeFrom: "", guideTimeTo: "",
 };
+
+// Exported so Visitations.jsx (and any other page) can reuse the exact
+// same open/closed and display logic instead of keeping a second copy
+// that could drift out of sync — see CHANGES.md item 1.
+export function formatSetupDateRange(v) {
+  const fromDisplay = v.dateFrom ? (isIsoDate(v.dateFrom) ? fmtDate(v.dateFrom) : v.dateFrom) : "";
+  const toDisplay = v.dateTo ? (isIsoDate(v.dateTo) ? fmtDate(v.dateTo) : v.dateTo) : "";
+  if (!fromDisplay && !toDisplay) return "—";
+  if (fromDisplay && toDisplay) return fromDisplay === toDisplay ? fromDisplay : `${fromDisplay} – ${toDisplay}`;
+  return fromDisplay || toDisplay;
+}
+
+export function isSetupOpen(v) {
+  // A setup counts as "open" (offered for new bookings) while dateTo (or
+  // dateFrom if dateTo is blank) hasn't passed yet. Free-typed text dates
+  // ("every Tuesday...") are always treated as open — there's no calendar
+  // value to compare against.
+  const checkDate = v.dateTo || v.dateFrom;
+  if (!checkDate || !isIsoDate(checkDate)) return true;
+  return checkDate >= todayISO();
+}
 
 export function autoFollowupForVisit(visit, genId, operatorName) {
   const base = new Date((visit.visitDate || todayISO()) + "T00:00:00");
@@ -28,12 +48,27 @@ export function autoFollowupForVisit(visit, genId, operatorName) {
   };
 }
 
+function DateRangeField({ label, value, mode, setMode, onChange }) {
+  return (
+    <Field label={label}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <button type="button" className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" + (mode === "calendar" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : "")} onClick={() => { setMode("calendar"); onChange(isIsoDate(value) ? value : ""); }}>Pick from calendar</button>
+        <button type="button" className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" + (mode === "manual" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : "")} onClick={() => { setMode("manual"); onChange(isIsoDate(value) ? "" : value); }}>Write manually</button>
+      </div>
+      {mode === "calendar"
+        ? <input type="date" className={inputCls} value={value} onChange={(e) => onChange(e.target.value)} />
+        : <input className={inputCls} placeholder="e.g. mid August 2026, or every Saturday" value={value} onChange={(e) => onChange(e.target.value)} />}
+    </Field>
+  );
+}
+
 export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdit, addAudit, session }) {
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyVisitSetup);
-  const [dateMode, setDateMode] = useState("calendar");
+  const [dateFromMode, setDateFromMode] = useState("calendar");
+  const [dateToMode, setDateToMode] = useState("calendar");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -46,10 +81,21 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
     );
   }, [visitSetups, query]);
 
-  function openNew() { setEditing(null); setDraft(emptyVisitSetup); setDateMode("calendar"); setSaveError(""); setModalOpen(true); }
-  function openEdit(v) { setEditing(v.id); setDraft({ ...v }); setDateMode(isIsoDate(v.date) || !v.date ? "calendar" : "manual"); setSaveError(""); setModalOpen(true); }
-  function toggleDay(day) {
-    setDraft((d) => ({ ...d, guideDays: d.guideDays.includes(day) ? d.guideDays.filter((x) => x !== day) : [...d.guideDays, day] }));
+  function openNew() {
+    setEditing(null);
+    setDraft(emptyVisitSetup);
+    setDateFromMode("calendar");
+    setDateToMode("calendar");
+    setSaveError("");
+    setModalOpen(true);
+  }
+  function openEdit(v) {
+    setEditing(v.id);
+    setDraft({ ...v });
+    setDateFromMode(isIsoDate(v.dateFrom) || !v.dateFrom ? "calendar" : "manual");
+    setDateToMode(isIsoDate(v.dateTo) || !v.dateTo ? "calendar" : "manual");
+    setSaveError("");
+    setModalOpen(true);
   }
   async function save() {
     if (!draft.company || !draft.batch || !draft.guideName || !draft.guidePhone) return;
@@ -83,18 +129,18 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
         <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
           <div style={{ overflowX: "auto" }}>
             <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead><tr className="group"><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Batch</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Address</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Items</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Availability</th>{canEdit && <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Actions</th>}</tr></thead>
+              <thead><tr className="group"><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Batch</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date range</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Address</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Items</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Daily hours</th>{canEdit && <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Actions</th>}</tr></thead>
               <tbody>
                 {filtered.map((v) => (
                   <tr key={v.id} className="group">
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{v.id}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.company}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.batch}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{isIsoDate(v.date) ? fmtDate(v.date) : (v.date || "—")}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{formatSetupDateRange(v)}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.address}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.items}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.guideName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{v.guidePhone}</div></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.guideDays.join(", ")}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{v.guideTimeFrom} – {v.guideTimeTo}</div></td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.guideTimeFrom} – {v.guideTimeTo}</td>
                     {canEdit && <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openEdit(v)}>Edit</button></td>}
                   </tr>
                 ))}
@@ -114,22 +160,8 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
           <Field label="Guide phone"><input className={inputCls} value={draft.guidePhone} onChange={(e) => setDraft({ ...draft, guidePhone: e.target.value })} /></Field>
           <Field label="Available from"><input type="time" className={inputCls} value={draft.guideTimeFrom} onChange={(e) => setDraft({ ...draft, guideTimeFrom: e.target.value })} /></Field>
           <Field label="Available until"><input type="time" className={inputCls} value={draft.guideTimeTo} onChange={(e) => setDraft({ ...draft, guideTimeTo: e.target.value })} /></Field>
-          <Field label="Date" full>
-            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-              <button type="button" className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" + (dateMode === "calendar" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : "")} onClick={() => { setDateMode("calendar"); setDraft((d) => ({ ...d, date: isIsoDate(d.date) ? d.date : "" })); }}>Pick from calendar</button>
-              <button type="button" className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" + (dateMode === "manual" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : "")} onClick={() => { setDateMode("manual"); setDraft((d) => ({ ...d, date: isIsoDate(d.date) ? "" : d.date })); }}>Write manually</button>
-            </div>
-            {dateMode === "calendar"
-              ? <input type="date" className={inputCls} value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
-              : <input className={inputCls} placeholder="e.g. mid August 2026, or every Saturday" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />}
-          </Field>
-          <Field label="Available days" full>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {DAYS_OF_WEEK.map((day) => (
-                <button type="button" key={day} className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" + (draft.guideDays.includes(day) ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : "")} onClick={() => toggleDay(day)}>{day}</button>
-              ))}
-            </div>
-          </Field>
+          <DateRangeField label="Date from" value={draft.dateFrom} mode={dateFromMode} setMode={setDateFromMode} onChange={(v) => setDraft((d) => ({ ...d, dateFrom: v }))} />
+          <DateRangeField label="Date to" value={draft.dateTo} mode={dateToMode} setMode={setDateToMode} onChange={(v) => setDraft((d) => ({ ...d, dateTo: v }))} />
         </div>
         {saveError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{saveError}</div>}
         <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">

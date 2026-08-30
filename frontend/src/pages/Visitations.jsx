@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { APPT_STATUSES, APPT_STAMP } from "../constants/lookups";
 import { todayISO, fmtDate, isIsoDate, dateInPreset } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
+import { isSetupOpen } from "./VisitSetups";
 import { appointments as appointmentsApi, followups as followupsApi } from "../api";
 
 export const emptyAppt = {
@@ -37,10 +38,6 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   );
   const guideOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.guideName))], [visitSetups]);
 
-  function isSetupOpen(v) {
-    if (!v.date || !isIsoDate(v.date)) return true;
-    return v.date >= todayISO();
-  }
   const openVisitSetups = useMemo(() => visitSetups.filter(isSetupOpen), [visitSetups]);
   const setupOptions = useMemo(() => {
     if (draft.setupId && !openVisitSetups.some((v) => v.id === draft.setupId)) {
@@ -89,9 +86,6 @@ export default function Visitations({ appointments, setAppointments, visitSetups
         const created = await appointmentsApi.createAppointment(draft);
         setAppointments((prev2) => [created, ...prev2]);
         addAudit("Register visitor", "—", `${created.id} created`, `${created.visitorName} · ${created.company} · ${created.batch}`);
-        // Server auto-creates the day-after follow-up (see API_SPEC.md §4) —
-        // re-fetch follow-ups so it shows up immediately instead of
-        // creating one client-side.
         try {
           const refreshed = await followupsApi.listFollowups();
           setFollowups(refreshed || []);
@@ -165,14 +159,18 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           {selectedSetup && (
             <div className="col-span-2" style={{ fontSize: 12.5, color: "var(--text-2)", background: "var(--paper)", borderRadius: 6, padding: "8px 10px" }}>
               <b>{selectedSetup.address}</b> — {selectedSetup.items}<br />
-              Guide {selectedSetup.guideName} ({selectedSetup.guidePhone}) is available {selectedSetup.guideDays.join(", ")}, {selectedSetup.guideTimeFrom}–{selectedSetup.guideTimeTo}
+              Guide {selectedSetup.guideName} ({selectedSetup.guidePhone}), {selectedSetup.guideTimeFrom}–{selectedSetup.guideTimeTo}
             </div>
           )}
           <Field label="Visitor name"><input className={inputCls} value={draft.visitorName} onChange={(e) => setDraft({ ...draft, visitorName: e.target.value })} /></Field>
           <Field label="Phone number"><input className={inputCls} value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></Field>
           <Field label="Visit date"><input type="date" className={inputCls} value={draft.visitDate} onChange={(e) => setDraft({ ...draft, visitDate: e.target.value })} /></Field>
           <Field label="Visit time"><input type="time" className={inputCls} value={draft.visitTime} onChange={(e) => setDraft({ ...draft, visitTime: e.target.value })} /></Field>
-          <Field label="Status"><select className={inputCls} value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>{APPT_STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
+          {/* Status only shown once editing an existing visitation — new
+              ones always start as "Requested" (CHANGES.md item 2). */}
+          {editing && (
+            <Field label="Status"><select className={inputCls} value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>{APPT_STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
+          )}
           <Field label="Notes" full><textarea className={inputCls} rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
         </div>
         {!editing && <div style={{ fontSize: 12, color: "var(--text-3)" }}>Registering this visitor automatically adds them to the Follow-ups list for a call back after the visit.</div>}
