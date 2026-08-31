@@ -24,8 +24,7 @@ from .serializers import (
     AuditLogSerializer,
     GoogleLoginSerializer,
 )
-
-
+from django.contrib.auth.models import User
 # =============================================================================
 # Shared helpers
 # =============================================================================
@@ -184,12 +183,7 @@ class EmployeeListCreateView(APIView):
         return Response(EmployeeSerializer(employee).data, status=http_status.HTTP_201_CREATED)
 
 class EmployeeDetailView(APIView):
-    """
-    PATCH /api/employees/<publicId>/  -> partial updates, e.g. { "status": "Inactive" }
-    Keeps Employee.status and the linked Django User.is_active in sync,
-    since a deactivated employee shouldn't be able to log in at all.
-    """
-    permission_classes = [IsAuthenticated, has_any_role('administrator')]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, employee_id):
         try:
@@ -200,19 +194,26 @@ class EmployeeDetailView(APIView):
         new_status = request.data.get('status')
         if new_status is not None:
             if new_status not in ('Active', 'Inactive'):
-                return Response(
-                    {'message': "status must be 'Active' or 'Inactive'."},
-                    status=http_status.HTTP_400_BAD_REQUEST,
-                )
-            prev_status = employee.status
+                return Response({'message': "status must be 'Active' or 'Inactive'."}, status=http_status.HTTP_400_BAD_REQUEST)
             employee.status = new_status
             employee.user.is_active = (new_status == 'Active')
             employee.user.save(update_fields=['is_active'])
             employee.save(update_fields=['status'])
 
-            if prev_status != new_status:
-                action = 'Activate employee' if new_status == 'Active' else 'Deactivate employee'
-                log_audit(request, action, prev_status, new_status, employee.user.username)
+        # ADD FROM HERE:
+        name = request.data.get('name')
+        if name is not None and name.strip():
+            employee.name = name.strip()
+            employee.save(update_fields=['name'])
+
+        email = request.data.get('email')
+        if email is not None:
+            email = email.strip().lower()
+            if email and User.objects.filter(email=email).exclude(pk=employee.user_id).exists():
+                return Response({'message': 'That email is already linked to another account.'}, status=http_status.HTTP_400_BAD_REQUEST)
+            employee.user.email = email
+            employee.user.save(update_fields=['email'])
+        # TO HERE
 
         return Response(EmployeeSerializer(employee).data)
 

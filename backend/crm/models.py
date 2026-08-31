@@ -191,25 +191,23 @@ class Followup(models.Model):
     def __str__(self):
         return f"{self.publicId} — {self.callerName}"
 
-
-# =============================================================================
-# VisitSetup  (§6) — must be defined before Appointment, which references it
-# =============================================================================
-
 class VisitSetup(models.Model):
     publicId = models.CharField(max_length=20, unique=True, editable=False)
 
     company = models.CharField(max_length=200)
     batch = models.CharField(max_length=100)
-    # Spec explicitly allows either an ISO date OR free text like "Every
-    # Tuesday..." — kept as CharField rather than DateField for that reason.
-    date = models.CharField(max_length=100, blank=True, default='')
+    # Same free-text-or-real-date flexibility as before, just split into a
+    # range. CharField (not DateField) on purpose — the frontend still
+    # allows manually-typed values like "mid August 2026".
+    dateFrom = models.CharField(max_length=100, blank=True, default='')
+    dateTo = models.CharField(max_length=100, blank=True, default='')
     address = models.CharField(max_length=300, blank=True, default='')
     items = models.TextField(blank=True, default='')
 
     guideName = models.CharField(max_length=150)
     guidePhone = models.CharField(max_length=20, blank=True, default='')
-    guideDays = models.JSONField(default=list, blank=True)  # subset of DAYS_OF_WEEK
+    # guideDays removed — a visit setup now only tracks the date range and
+    # daily time window, not specific weekdays.
     guideTimeFrom = models.TimeField(null=True, blank=True)
     guideTimeTo = models.TimeField(null=True, blank=True)
 

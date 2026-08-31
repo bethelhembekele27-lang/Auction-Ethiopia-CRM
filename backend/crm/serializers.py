@@ -59,15 +59,15 @@ class RoleCreateSerializer(serializers.Serializer):
 # =============================================================================
 
 class EmployeeSerializer(serializers.ModelSerializer):
-    """Read shape — matches API_SPEC.md §8 GET /employees exactly."""
     id = serializers.CharField(source='publicId', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
+    email = serializers.CharField(source='user.email', read_only=True)  # ADD THIS LINE
     role = serializers.CharField(source='role.key', read_only=True)
 
     class Meta:
         model = Employee
         fields = [
-            'id', 'name', 'username', 'role', 'status',
+            'id', 'name', 'username', 'email', 'role', 'status',  # add 'email' here too
             'lastPasswordChange', 'lastUsernameChange', 'privileges',
         ]
 
@@ -302,50 +302,26 @@ class FollowupSerializer(serializers.ModelSerializer):
 # =============================================================================
 
 class VisitSetupSerializer(serializers.ModelSerializer):
-    """
-    Maps API_SPEC.md §6 field names onto the model.
-    - `id` <-> VisitSetup.publicId
-    - `createdBy` is read-only here: the spec says POST sends "Visit Setup
-      object without id/createdBy/createdDate (server sets these from the
-      session)" — so it's never accepted from the client, only ever
-      produced from request.user.employee in the view.
-    - `guideTimeFrom` / `guideTimeTo`: model fields are TimeField, but the
-      frontend's <input type="time"> sends/expects plain "HH:MM" — format
-      is pinned explicitly so it round-trips correctly rather than DRF's
-      default "HH:MM:SS" representation.
-    - `guideDays` isn't validated against DAYS_OF_WEEK here, since neither
-      the spec nor the frontend enforces it strictly (VisitSetups.jsx just
-      toggles from a fixed button list) — kept permissive as a JSONField
-      passthrough. Flagging in case you want it hard-validated instead.
-    """
     id = serializers.CharField(source='publicId', read_only=True)
-    createdBy = serializers.SerializerMethodField()
-    guideTimeFrom = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'], required=False, allow_null=True)
-    guideTimeTo = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'], required=False, allow_null=True)
+    createdBy = serializers.CharField(source='createdBy.name', read_only=True, default='')
+    createdDate = serializers.DateField(read_only=True)
 
     class Meta:
         model = VisitSetup
         fields = [
-            'id', 'company', 'batch', 'date', 'address', 'items',
-            'guideName', 'guidePhone', 'guideDays', 'guideTimeFrom',
-            'guideTimeTo', 'createdBy', 'createdDate',
+            'id', 'company', 'batch', 'dateFrom', 'dateTo', 'address', 'items',
+            'guideName', 'guidePhone', 'guideTimeFrom', 'guideTimeTo',
+            'createdBy', 'createdDate',
         ]
-        read_only_fields = ['createdDate']
-
-    def get_createdBy(self, instance):
-        return instance.createdBy.name if instance.createdBy else ''
 
     def create(self, validated_data):
-        # createdBy is injected by the view (from request.user.employee),
-        # passed in via serializer.save(createdBy=...) — never read from
-        # client input.
-        return VisitSetup.objects.create(**validated_data)
-
-    def update(self, instance, validated_data):
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                validated_data['createdBy'] = request.user.employee
+            except Employee.DoesNotExist:
+                pass
+        return super().create(validated_data)
     
 
 
