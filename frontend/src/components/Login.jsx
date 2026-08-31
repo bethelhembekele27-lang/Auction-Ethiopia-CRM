@@ -2,6 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { auth } from "../api";
 import { logo } from "../constants/assets";
 
+// Module-level guard — React 19 StrictMode intentionally double-invokes
+// effects in dev (mount → cleanup → remount) to surface bugs. Our cleanup
+// can't actually "un-initialize" Google's SDK (there's no such API), so
+// without this guard initialize() legitimately fires twice per dev
+// session — harmless (Google just warns and uses the last call), but
+// noisy. This flag survives across the double-mount since it's outside
+// the component, and does NOT affect the production build, where
+// StrictMode's double-invoke doesn't happen.
+let googleInitialized = false;
+
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -13,13 +23,6 @@ export default function Login({ onLogin }) {
   const googleButtonRef = useRef(null);
   const googleWrapRef = useRef(null);
 
-  // Google Identity Services' renderButton() only accepts a fixed pixel
-  // number for width — NOT a percentage string. Passing "100%" is
-  // silently ignored and it falls back to its own default (~200px),
-  // which is why the button looked small next to "Sign in" regardless
-  // of the wrapping div being full-width. Fix: measure the actual
-  // container width in JS and pass that as a number, recomputed on
-  // resize so it still matches if the window is resized.
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     if (!clientId) return;
@@ -30,7 +33,7 @@ export default function Login({ onLogin }) {
     function renderGoogleButton() {
       if (cancelled || !window.google || !window.google.accounts || !googleButtonRef.current || !googleWrapRef.current) return;
       const width = Math.round(googleWrapRef.current.getBoundingClientRect().width);
-      googleButtonRef.current.innerHTML = ""; // clear before re-render on resize
+      googleButtonRef.current.innerHTML = "";
       window.google.accounts.id.renderButton(googleButtonRef.current, {
         theme: "outline",
         size: "large",
@@ -45,10 +48,13 @@ export default function Login({ onLogin }) {
         setTimeout(tryInit, 100);
         return;
       }
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: handleGoogleCredential,
-      });
+      if (!googleInitialized) {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleCredential,
+        });
+        googleInitialized = true;
+      }
       renderGoogleButton();
 
       resizeHandler = () => renderGoogleButton();
@@ -97,7 +103,6 @@ export default function Login({ onLogin }) {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[color:var(--paper)] p-6">
       <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl py-8 px-7 w-full max-w-[380px]">
-        {/* Logo */}
         <div className="flex justify-center mb-4">
           <img
             src={logo}
@@ -106,7 +111,6 @@ export default function Login({ onLogin }) {
           />
         </div>
 
-        {/* Heading */}
         <h1 className="text-center text-xl font-semibold text-[color:var(--text)] mb-0.5">
           Sign in
         </h1>
@@ -114,7 +118,6 @@ export default function Login({ onLogin }) {
           Call Center Management
         </p>
 
-        {/* Username field */}
         <div className="mb-3.5">
           <label className="block text-[11px] font-semibold text-[color:var(--text-2)] uppercase tracking-wider mb-1.5">
             Username
@@ -132,7 +135,6 @@ export default function Login({ onLogin }) {
           />
         </div>
 
-        {/* Password field */}
         <div className="mb-3.5">
           <label className="block text-[11px] font-semibold text-[color:var(--text-2)] uppercase tracking-wider mb-1.5">
             Password
@@ -170,7 +172,6 @@ export default function Login({ onLogin }) {
           </div>
         </div>
 
-        {/* Remember me checkbox */}
         <label className="flex items-center gap-2 text-[13px] text-[color:var(--text-2)] mb-4 cursor-pointer">
           <input
             type="checkbox"
@@ -182,14 +183,12 @@ export default function Login({ onLogin }) {
           Remember me on this device
         </label>
 
-        {/* Error message */}
         {error && (
           <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md mb-4">
             {error}
           </div>
         )}
 
-        {/* Sign in button */}
         <button
           onClick={attemptLogin}
           disabled={loading || googleLoading || !username.trim() || !password}
@@ -198,7 +197,6 @@ export default function Login({ onLogin }) {
           {loading ? "Signing in…" : "Sign in"}
         </button>
 
-        {/* Divider + Google login */}
         {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
           <>
             <div className="flex items-center gap-3 my-4">

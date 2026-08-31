@@ -19,7 +19,7 @@ import Employees from "../pages/Employees";
 import NotificationsPage from "../pages/NotificationsPage";
 
 import { useNotifications } from "../hooks/useNotifications";
-import { roleLabels, EDIT_ROLES, ADMIN_LIKE_ROLES, navItems } from "../constants/roles";
+import { roleLabels, EDIT_ROLES, ADMIN_LIKE_ROLES, navItems, defaultPageForRole } from "../constants/roles";
 import { pad, nowStamp } from "../utils/format";
 import * as api from "../api";
 
@@ -56,6 +56,17 @@ export default function App() {
   }
 
   const canEdit = session ? EDIT_ROLES.includes(session.role) : false;
+
+  // 2.10: which nav items THIS session is allowed to see — single source
+  // of truth, reused for both the header nav and for guarding page
+  // rendering below, so "hidden tab" and "blocked page" can never drift
+  // out of sync with each other again.
+  const allowedPageKeys = new Set(
+    navItems.filter((n) => !n.roles || (session && n.roles.includes(session.role))).map((n) => n.key)
+  );
+  function canSeePage(key) {
+    return allowedPageKeys.has(key);
+  }
 
   function addAudit(action, prevValue, newValue, reason) {
     const { d, t } = nowStamp();
@@ -109,6 +120,10 @@ export default function App() {
 
   function handleLogin(role, username, operatorName) {
     setSession({ role, username, operatorName: operatorName || null });
+    // 2.10: land on a page this role can actually see — previously every
+    // role always opened on "dashboard" even when that tab was about to
+    // be hidden from them.
+    setPage(defaultPageForRole(role));
   }
   async function handleLogout() {
     try { await api.auth.logout(); } catch { /* ignore network errors on logout */ }
@@ -155,7 +170,7 @@ export default function App() {
             <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-3)", padding: "40px 0" }}>Loading…</div>
           ) : (
             <>
-              {page === "dashboard" && <Dashboard inquiries={inquiries} followups={followups} appointments={appointments} complaints={complaints} />}
+              {page === "dashboard" && canSeePage("dashboard") && <Dashboard inquiries={inquiries} followups={followups} appointments={appointments} complaints={complaints} />}
               {page === "inquiries" && (
                 <Inquiries
                   inquiries={inquiries} setInquiries={setInquiries} setFollowups={setFollowups}
@@ -168,12 +183,12 @@ export default function App() {
               {page === "visitsetup" && <VisitSetups visitSetups={visitSetups} setVisitSetups={setVisitSetups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
               {page === "visitations" && <Visitations appointments={appointments} setAppointments={setAppointments} visitSetups={visitSetups} setFollowups={setFollowups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
               {page === "complaints" && <Complaints complaints={complaints} setComplaints={setComplaints} genId={genId} canEdit={canEdit} addAudit={addAudit} />}
-              {page === "reports" && session.role === "administrator" && <Reports inquiries={inquiries} appointments={appointments} complaints={complaints} />}
-              {page === "audit" && ADMIN_LIKE_ROLES.includes(session.role) && <Audit auditLog={auditLog} />}
-              {page === "escalations" && (session.role === "auction_manager" || session.role === "call_operator") && (
+              {page === "reports" && canSeePage("reports") && <Reports inquiries={inquiries} appointments={appointments} complaints={complaints} />}
+              {page === "audit" && canSeePage("audit") && <Audit auditLog={auditLog} session={session} />}
+              {page === "escalations" && canSeePage("escalations") && (
                 <Escalations escalations={escalations} setEscalations={setEscalations} addAudit={addAudit} session={session} />
               )}
-              {page === "employees" && session.role === "administrator" && (
+              {page === "employees" && canSeePage("employees") && (
                 <Employees employees={employees} setEmployees={setEmployees} roles={roles} setRoles={setRoles} genId={genId} addAudit={addAudit} />
               )}
               {page === "notifications" && <NotificationsPage items={bellItems} onClear={clearFromBell} goTo={setPage} />}

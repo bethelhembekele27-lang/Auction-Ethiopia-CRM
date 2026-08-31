@@ -16,8 +16,16 @@ export const EDIT_ROLES = ["administrator", "call_operator", "auction_manager"];
 // EXCEPT the Employees page, which stays administrator-only.
 export const ADMIN_LIKE_ROLES = ["administrator", "auction_manager"];
 
+// 2.10 fix: Dashboard is analytics/rollup, not a call_operator task — their
+// whole job is recording CRM data (inquiries/follow-ups/visits/complaints),
+// so the tab is hidden for them rather than shown-then-blocked. Every other
+// nav item below already had correct `roles` gating; Dashboard was the one
+// gap (it previously had none, so every role — including call_operator —
+// saw it, even though nothing there ever 403'd, it just wasn't useful to
+// them and adds noise). If this assumption is wrong and operators SHOULD
+// keep Dashboard, just delete the `roles` line below.
 export const navItems = [
-  { key: "dashboard", label: "Dashboard" },
+  { key: "dashboard", label: "Dashboard", roles: ["administrator", "auction_manager", "viewer"] },
   { key: "inquiries", label: "Inquiries" },
   { key: "callers", label: "Callers" },
   { key: "followups", label: "Follow-ups" },
@@ -30,6 +38,15 @@ export const navItems = [
   { key: "employees", label: "Employees", roles: ["administrator"] },
   { key: "notifications", label: "Notifications", hidden: true },
 ];
+
+// Single source of truth for "what page should this role land on after
+// login" — used by App.jsx instead of hardcoding "dashboard" for everyone,
+// since call_operator can no longer see that tab (see navItems above).
+export function defaultPageForRole(role) {
+  const item = navItems.find((n) => n.key === "dashboard");
+  const canSeeDashboard = !item.roles || item.roles.includes(role);
+  return canSeeDashboard ? "dashboard" : "inquiries";
+}
 
 /* ================================================================
    EMPLOYEES  (administrator only — accounts, roles, privileges)

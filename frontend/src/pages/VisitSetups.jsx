@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { todayISO, fmtDate, isIsoDate } from "../utils/format";
 import { Field, Modal, EmptyState, inputCls } from "../components/ui";
+import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
+import { useRowSelection } from "../hooks/useRowSelection";
 import { visitSetups as visitSetupsApi } from "../api";
 
 const emptyVisitSetup = {
@@ -20,10 +22,6 @@ export function formatSetupDateRange(v) {
 }
 
 export function isSetupOpen(v) {
-  // A setup counts as "open" (offered for new bookings) while dateTo (or
-  // dateFrom if dateTo is blank) hasn't passed yet. Free-typed text dates
-  // ("every Tuesday...") are always treated as open — there's no calendar
-  // value to compare against.
   const checkDate = v.dateTo || v.dateFrom;
   if (!checkDate || !isIsoDate(checkDate)) return true;
   return checkDate >= todayISO();
@@ -72,6 +70,8 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
+  const sel = useRowSelection((v) => v.id);
+
   const filtered = useMemo(() => {
     if (!query) return visitSetups;
     const q = query.toLowerCase();
@@ -97,6 +97,10 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
     setSaveError("");
     setModalOpen(true);
   }
+  function openEditSelected() {
+    const rows = sel.selectedFrom(filtered);
+    if (rows.length === 1) openEdit(rows[0]);
+  }
   async function save() {
     if (!draft.company || !draft.batch || !draft.guideName || !draft.guidePhone) return;
     setSaving(true);
@@ -112,6 +116,7 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
         addAudit("Create visit setup", "—", `${created.id} created`, `${created.company} · ${created.batch} — guide ${created.guideName}`);
       }
       setModalOpen(false);
+      sel.clear();
     } catch (err) {
       setSaveError(err.body?.message || "Couldn't save — try again.");
     } finally {
@@ -125,14 +130,26 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
         <input className="w-[220px] font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" placeholder="Search company, batch, guide…" value={query} onChange={(e) => setQuery(e.target.value)} />
         {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" style={{ marginLeft: "auto" }} onClick={openNew}>+ New visit setup</button>}
       </div>
+
+      {canEdit && (
+        <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>Edit</button>
+          {/* Delete goes here — see item 2.8, held until backend delete endpoint exists */}
+        </BulkActionBar>
+      )}
+
       {filtered.length === 0 ? <EmptyState text="No visit setups registered yet." /> : (
         <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
           <div style={{ overflowX: "auto" }}>
             <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead><tr className="group"><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Batch</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date range</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Address</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Items</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Daily hours</th>{canEdit && <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Actions</th>}</tr></thead>
+              <thead><tr className="group">
+                {canEdit && <HeaderCheckbox checked={sel.isAllSelected(filtered)} onChange={() => sel.toggleAll(filtered)} />}
+                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Batch</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date range</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Address</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Items</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Daily hours</th>
+              </tr></thead>
               <tbody>
                 {filtered.map((v) => (
                   <tr key={v.id} className="group">
+                    {canEdit && <RowCheckbox checked={sel.isSelected(v)} onChange={() => sel.toggle(v)} label={`Select ${v.id}`} />}
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{v.id}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.company}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.batch}</td>
@@ -141,7 +158,6 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.items}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.guideName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{v.guidePhone}</div></td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.guideTimeFrom} – {v.guideTimeTo}</td>
-                    {canEdit && <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openEdit(v)}>Edit</button></td>}
                   </tr>
                 ))}
               </tbody>

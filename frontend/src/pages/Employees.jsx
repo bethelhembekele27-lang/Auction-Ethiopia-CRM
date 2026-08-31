@@ -3,6 +3,8 @@ import { roleLabels, rolePrivilegeDefaults, PERMISSIONS } from "../constants/rol
 import { OPERATORS } from "../constants/lookups";
 import { fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, inputCls } from "../components/ui";
+import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
+import { useRowSelection } from "../hooks/useRowSelection";
 import { employees as employeesApi } from "../api";
 
 const emptyEmployee = { name: "", username: "", password: "", role: "call_operator" };
@@ -17,6 +19,9 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   const [newRoleName, setNewRoleName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [bulkError, setBulkError] = useState("");
+
+  const sel = useRowSelection((e) => e.id);
 
   function openNew() { setDraft({ ...emptyEmployee, role: roles[0] || "call_operator" }); setSaveError(""); setModalOpen(true); }
   async function saveNew() {
@@ -38,17 +43,31 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
       setSaving(false);
     }
   }
-  async function toggleStatus(emp) {
-    const next = emp.status === "Active" ? "Inactive" : "Active";
+
+  // Bulk Activate/Deactivate — only touches rows that actually need to
+  // change (e.g. "Deactivate" skips anyone already Inactive).
+  async function bulkSetStatus(nextStatus) {
+    const rows = sel.selectedFrom(employees).filter((e) => e.status !== nextStatus);
+    if (!rows.length) return;
+    setBulkError("");
     try {
-      const updated = await employeesApi.updateEmployee(emp.id, { status: next });
-      setEmployees((prev) => prev.map((e) => (e.id === emp.id ? { ...e, ...updated } : e)));
-      addAudit(next === "Active" ? "Activate employee" : "Deactivate employee", emp.status, next, `${emp.username}`);
+      const updates = await Promise.all(rows.map((e) => employeesApi.updateEmployee(e.id, { status: nextStatus })));
+      setEmployees((prev) => prev.map((x) => {
+        const idx = rows.findIndex((r) => r.id === x.id);
+        return idx === -1 ? x : { ...x, ...updates[idx] };
+      }));
+      rows.forEach((e) => addAudit(nextStatus === "Active" ? "Activate employee" : "Deactivate employee", e.status, nextStatus, e.username));
+      sel.clear();
     } catch (err) {
-      alert(err.body?.message || "Couldn't update status — try again.");
+      setBulkError(err.body?.message || "Couldn't update one or more employees — try again.");
     }
   }
+
   function openPriv(emp) { setPrivTarget(emp); setPrivDraft(emp.privileges); setSaveError(""); setPrivModalOpen(true); }
+  function openPrivSelected() {
+    const rows = sel.selectedFrom(employees);
+    if (rows.length === 1) openPriv(rows[0]);
+  }
   function togglePriv(p) { setPrivDraft((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])); }
   async function savePriv() {
     setSaving(true);
@@ -58,6 +77,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
       setEmployees((prev) => prev.map((e) => (e.id === privTarget.id ? { ...e, ...updated } : e)));
       addAudit("Edit privileges", `${privTarget.privileges.length}/${PERMISSIONS.length}`, `${privDraft.length}/${PERMISSIONS.length}`, privTarget.username);
       setPrivModalOpen(false);
+      sel.clear();
     } catch (err) {
       setSaveError(err.body?.message || "Couldn't save privileges — try again.");
     } finally {
@@ -91,13 +111,26 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
         <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)]" onClick={() => { setSaveError(""); setRoleModalOpen(true); }}>New role</button>
         <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" style={{ marginLeft: "auto" }} onClick={openNew}>+ New employee</button>
       </div>
+
+      <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openPrivSelected}>Edit privileges</button>
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Active")}>Activate</button>
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--red)] bg-[color:var(--red-bg)] text-[color:var(--red)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Inactive")}>Deactivate</button>
+        {/* Delete goes here — see item 2.8, held until backend delete endpoint exists */}
+      </BulkActionBar>
+      {bulkError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>{bulkError}</div>}
+
       <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
         <div style={{ overflowX: "auto" }}>
           <table className="w-full border-collapse text-[13px] min-w-[640px]">
-            <thead><tr className="group"><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Name</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Username</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Role</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Last password change</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Last username change</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Privileges</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Actions</th></tr></thead>
+            <thead><tr className="group">
+              <HeaderCheckbox checked={sel.isAllSelected(employees)} onChange={() => sel.toggleAll(employees)} />
+              <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Name</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Username</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Role</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Last password change</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Last username change</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Privileges</th>
+            </tr></thead>
             <tbody>
               {employees.map((e) => (
                 <tr key={e.id} className="group">
+                  <RowCheckbox checked={sel.isSelected(e)} onChange={() => sel.toggle(e)} label={`Select ${e.username}`} />
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{e.name}</td>
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{e.username}</td>
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{roleLabels[e.role] || e.role}</td>
@@ -105,12 +138,6 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(e.lastPasswordChange)}</td>
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{e.lastUsernameChange ? fmtDate(e.lastUsernameChange) : "—"}</td>
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{e.privileges.length}/{PERMISSIONS.length}</td>
-                  <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                    <div className="flex gap-1.5 flex-wrap">
-                      <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openPriv(e)}>Edit privileges</button>
-                      <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-[color:var(--red-bg)] text-[color:var(--red)] border-[color:var(--red)]" onClick={() => toggleStatus(e)}>{e.status === "Active" ? "Deactivate" : "Activate"}</button>
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>

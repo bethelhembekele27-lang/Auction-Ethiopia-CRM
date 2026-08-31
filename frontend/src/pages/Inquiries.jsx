@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { CATEGORIES, PRIORITIES, STATUSES, OPERATORS, COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
 import { todayISO, fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
+import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
+import { useRowSelection } from "../hooks/useRowSelection";
 import { emptyAppt } from "./Visitations";
 import { isSetupOpen } from "./VisitSetups";
 import { emptyComplaint } from "./Complaints";
@@ -42,9 +44,8 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   const [escSaving, setEscSaving] = useState(false);
   const [escError, setEscError] = useState("");
 
-  // Same open-setups-only pattern as Visitations.jsx, since "Book
-  // visitation" now opens the identical Register-visitor flow (CHANGES.md
-  // item 5) instead of its own free-text modal.
+  const sel = useRowSelection((i) => i.id);
+
   const openVisitSetups = useMemo(() => (visitSetups || []).filter(isSetupOpen), [visitSetups]);
   const setupOptions = useMemo(() => {
     if (apptDraft?.setupId && !openVisitSetups.some((v) => v.id === apptDraft.setupId)) {
@@ -69,6 +70,13 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     }).sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime));
   }, [inquiries, query, fCategory, fPriority, fStatus, fOperator]);
 
+  // Single-selected row, used to enable/disable every per-record action
+  // button in the top bar below.
+  const soleSelected = useMemo(() => {
+    const rows = sel.selectedFrom(filtered);
+    return rows.length === 1 ? rows[0] : null;
+  }, [sel.selected, filtered]);
+
   function openNew() {
     setEditing(null);
     setDraft({ ...emptyInquiry, dateTime: new Date().toISOString().slice(0, 16) });
@@ -83,6 +91,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     setSaveError("");
     setModalOpen(true);
   }
+  function openEditSelected() { if (soleSelected) openEdit(soleSelected); }
   async function save() {
     if (!draft.callerName || !draft.phone) return;
     let record = { ...draft };
@@ -107,6 +116,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
         addAudit("Log inquiry", "—", `${created.id} created`, `${created.category} from ${created.callerName}`);
       }
       setModalOpen(false);
+      sel.clear();
     } catch (err) {
       setSaveError(err.body?.message || "Couldn't save — try again.");
     } finally {
@@ -125,6 +135,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     setEscError("");
     setEscModalOpen(true);
   }
+  function openEscalationSelected() { if (soleSelected && soleSelected.priority === "Urgent") openEscalationFor(soleSelected); }
   async function saveEscalation() {
     if (!escDraft.note.trim()) return;
     setEscSaving(true);
@@ -138,6 +149,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       setEscalations((prev) => [created, ...prev]);
       addAudit("Send to Auction Manager", "—", `${created.id} created`, `${created.inquiryId} · ${created.callerName} — flagged by ${created.operatorName}`);
       setEscModalOpen(false);
+      sel.clear();
     } catch (err) {
       setEscError(err.body?.message || "Couldn't send to manager — try again.");
     } finally {
@@ -145,12 +157,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     }
   }
 
-  // Rebuilt to match Visitations.jsx's Register-visitor flow exactly
-  // (CHANGES.md item 5) — pick a registered Auction visit setup, which
-  // fills in company/batch/guide/address automatically, rather than the
-  // old free-text Assigned staff field. No Status field here either,
-  // since this always creates a new visitation (never edits one), and
-  // new visitations start as "Requested" regardless (item 2).
   function openVisitationFor(inq) {
     setApptDraft({
       ...emptyAppt,
@@ -162,6 +168,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     setApptError("");
     setApptModalOpen(true);
   }
+  function openVisitationSelected() { if (soleSelected) openVisitationFor(soleSelected); }
   function applySetup(setupId) {
     const s = (visitSetups || []).find((v) => v.id === setupId);
     if (!s) { setApptDraft((d) => ({ ...d, setupId: "" })); return; }
@@ -179,13 +186,12 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       const created = await appointmentsApi.createAppointment(apptDraft);
       setAppointments((prev) => [created, ...prev]);
       addAudit("Book visitation", "—", `${created.id} created`, `${created.visitorName} for ${created.company || created.auction} (from inquiry)`);
-      // Server auto-creates the day-after follow-up (see API_SPEC.md §4) —
-      // re-fetch follow-ups so it shows up right away.
       try {
         const refreshed = await followupsApi.listFollowups();
         setFollowups(refreshed || []);
       } catch { /* non-fatal */ }
       setApptModalOpen(false);
+      sel.clear();
     } catch (err) {
       setApptError(err.body?.message || "Couldn't book visitation — try again.");
     } finally {
@@ -205,6 +211,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     setCmpError("");
     setCmpModalOpen(true);
   }
+  function openComplaintSelected() { if (soleSelected) openComplaintFor(soleSelected); }
   async function saveComplaint() {
     if (!cmpDraft.callerName || !cmpDraft.description) return;
     setCmpSaving(true);
@@ -214,12 +221,15 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       setComplaints((prev) => [created, ...prev]);
       addAudit("Log complaint", "—", `${created.category} — ${created.callerName} (from inquiry)`, created.id);
       setCmpModalOpen(false);
+      sel.clear();
     } catch (err) {
       setCmpError(err.body?.message || "Couldn't log complaint — try again.");
     } finally {
       setCmpSaving(false);
     }
   }
+
+  const canEscalateSelected = canEdit && session.role === "call_operator" && soleSelected && soleSelected.priority === "Urgent";
 
   return (
     <div>
@@ -240,14 +250,29 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
         {session.role === "call_operator" && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" style={{ marginLeft: "auto" }} onClick={openNew}>+ New inquiry</button>}
       </div>
 
+      {canEdit && (
+        <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!soleSelected} onClick={openEditSelected}>Edit</button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!soleSelected} onClick={openVisitationSelected}>Book visitation</button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!soleSelected} onClick={openComplaintSelected}>Complaint</button>
+          {session.role === "call_operator" && (
+            <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--red)] bg-[color:var(--red-bg)] text-[color:var(--red)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!canEscalateSelected} title={soleSelected && soleSelected.priority !== "Urgent" ? "Only Urgent inquiries can be sent to the manager" : ""} onClick={openEscalationSelected}>Send to manager</button>
+          )}
+        </BulkActionBar>
+      )}
+
       {filtered.length === 0 ? <EmptyState text="No inquiries match these filters." /> : (
         <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
           <div style={{ overflowX: "auto" }}>
             <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead><tr className="group"><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Caller</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Category</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Priority</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Operator</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Actions</th></tr></thead>
+              <thead><tr className="group">
+                {canEdit && <HeaderCheckbox checked={sel.isAllSelected(filtered)} onChange={() => sel.toggleAll(filtered)} />}
+                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Caller</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Category</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Priority</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Operator</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
+              </tr></thead>
               <tbody>
                 {filtered.map((i) => (
                   <tr key={i.id} className="group">
+                    {canEdit && <RowCheckbox checked={sel.isSelected(i)} onChange={() => sel.toggle(i)} label={`Select ${i.id}`} />}
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{i.id}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.callerName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.phone}{i.company ? ` · ${i.company}` : ""}</div></td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.category}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.auction}{i.batch ? ` · ${i.batch}` : ""}</div></td>
@@ -255,14 +280,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.operator}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(i.dateTime.slice(0, 10))}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={i.status} kind={STATUS_STAMP[i.status]} /></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      <div className="flex gap-1.5 flex-wrap">
-                        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openEdit(i)}>Edit</button>}
-                        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openVisitationFor(i)}>Book visitation</button>}
-                        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={() => openComplaintFor(i)}>Complaint</button>}
-                        {canEdit && session.role === "call_operator" && i.priority === "Urgent" && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-[color:var(--red-bg)] text-[color:var(--red)] border-[color:var(--red)]" onClick={() => openEscalationFor(i)}>Send to manager</button>}
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -324,10 +341,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
         </div>
       </Modal>
 
-      {/* Book visitation — now the identical Register-visitor flow used on
-          the Visitations page (CHANGES.md item 5): pick a registered
-          Auction visit setup rather than typing "Assigned staff" free text,
-          and no Status field since this is always a create, never an edit. */}
       <Modal open={apptModalOpen} onClose={() => setApptModalOpen(false)} title="Register visitor" wide>
         {apptDraft && (
           <>
