@@ -7,7 +7,7 @@ import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSe
 import { useRowSelection } from "../hooks/useRowSelection";
 import { employees as employeesApi } from "../api";
 
-const emptyEmployee = { name: "", username: "", password: "", role: "call_operator" };
+const emptyEmployee = { name: "", username: "", password: "", role: "call_operator", email: "" };
 
 export default function Employees({ employees, setEmployees, roles, setRoles, addAudit }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -20,7 +20,8 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [bulkError, setBulkError] = useState("");
-
+  const [editTarget, setEditTarget] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
   const sel = useRowSelection((e) => e.id);
 
   function openNew() { setDraft({ ...emptyEmployee, role: roles[0] || "call_operator" }); setSaveError(""); setModalOpen(true); }
@@ -32,6 +33,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
       const created = await employeesApi.createEmployee({
         name: draft.name.trim(), username: draft.username.trim().toLowerCase(),
         password: draft.password.trim(), role: draft.role,
+        email: draft.email.trim().toLowerCase(),
       });
       setEmployees((prev) => [...prev, created]);
       if (created.role === "call_operator" && !OPERATORS.includes(created.name)) OPERATORS.push(created.name);
@@ -42,7 +44,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
     } finally {
       setSaving(false);
     }
-  }
+  } 
 
   // Bulk Activate/Deactivate — only touches rows that actually need to
   // change (e.g. "Deactivate" skips anyone already Inactive).
@@ -149,6 +151,9 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
         <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
           <Field label="Full name"><input className={inputCls} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
           <Field label="Username"><input className={inputCls} value={draft.username} onChange={(e) => setDraft({ ...draft, username: e.target.value })} /></Field>
+          <Field label="Email (optional — needed for Google sign-in)">
+            <input type="email" className={inputCls} value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="name@example.com" />
+          </Field>
           <Field label="Temporary password"><input className={inputCls} value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} /></Field>
           <Field label="Role">
             <select className={inputCls} value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })}>

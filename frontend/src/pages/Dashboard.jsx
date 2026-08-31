@@ -1,15 +1,22 @@
 import React from "react";
 import { StatCard } from "../components/ui";
-import { OPERATORS } from "../constants/lookups";
+
 import { countBy, daysBetween } from "../utils/format";
 
-// Reads: inquiries, followups, appointments, complaints — same shape as
-// every other page. Purely a read-only rollup, no writes/audit here.
-export default function Dashboard({ inquiries, followups, appointments, complaints }) {
+// Reads: inquiries, followups, appointments, complaints, employees — same
+// shape as every other page. Purely a read-only rollup, no writes/audit
+// here. Operator list is derived live from `employees` (call_operator
+// role) rather than the old hardcoded OPERATORS constant, so new hires
+// show up here without touching source code.
+export default function Dashboard({ inquiries, followups, appointments, complaints, employees }) {
+  const operators = (employees || [])
+    .filter((e) => e.role === "call_operator")
+    .map((e) => e.name);
+
   const openComplaints = complaints.filter((c) => c.status !== "Resolved").length;
   const resolvedComplaints = complaints.filter((c) => c.status === "Resolved").length;
 
-  const operatorPerf = OPERATORS.map((op) => {
+  const operatorPerf = operators.map((op) => {
     const mine = inquiries.filter((i) => i.operator === op);
     const resolved = mine.filter((i) => ["Resolved", "Closed"].includes(i.status));
     const withTime = resolved.filter((i) => i.resolvedDate);
@@ -68,7 +75,13 @@ export default function Dashboard({ inquiries, followups, appointments, complain
               </tr>
             </thead>
             <tbody>
-              {operatorPerf.map((o) => (
+              {operatorPerf.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", color: "var(--text-3)", padding: 20 }}>
+                    No call-center operators yet.
+                  </td>
+                </tr>
+              ) : operatorPerf.map((o) => (
                 <tr key={o.operator} className="group">
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{o.operator}</td>
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{o.total}</td>

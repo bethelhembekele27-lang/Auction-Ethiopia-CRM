@@ -170,7 +170,7 @@ export default function App() {
             <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-3)", padding: "40px 0" }}>Loading…</div>
           ) : (
             <>
-              {page === "dashboard" && canSeePage("dashboard") && <Dashboard inquiries={inquiries} followups={followups} appointments={appointments} complaints={complaints} />}
+              {page === "dashboard" && canSeePage("dashboard") && <Dashboard inquiries={inquiries} followups={followups} appointments={appointments} complaints={complaints} employees={employees} />}
               {page === "inquiries" && (
                 <Inquiries
                   inquiries={inquiries} setInquiries={setInquiries} setFollowups={setFollowups}
