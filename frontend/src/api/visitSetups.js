@@ -11,3 +11,6 @@ export function createVisitSetup(data) {
 export function updateVisitSetup(id, data) {
   return api.patch(`/visit-setups/${id}`, data);
 }
+export function deleteVisitSetup(id) {
+  return api.del(`/visit-setups/${id}`);
+}

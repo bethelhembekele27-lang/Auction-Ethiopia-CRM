@@ -12,3 +12,6 @@ export function createAppointment(data) {
 export function updateAppointment(id, data) {
   return api.patch(`/appointments/${id}`, data);
 }
+export function deleteAppointment(id) {
+  return api.del(`/appointments/${id}`);
+}

@@ -10,9 +10,9 @@ from google.auth.transport import requests as google_requests
 
 from django.contrib.auth import authenticate
 from django.utils.dateparse import parse_date
-
+ # add InquiryAttachment alongside whatever's already imported
 from .models import (
-    Inquiry, Employee, CATEGORIES, PRIORITIES, INQUIRY_STATUSES,
+    Inquiry,InquiryAttachment ,Employee, CATEGORIES, PRIORITIES, INQUIRY_STATUSES,
     Followup, FOLLOWUP_SETTABLE_STATUSES,VisitSetup, DAYS_OF_WEEK,Appointment, Followup,Role,Complaint, COMPLAINT_CATEGORIES, DEPARTMENTS, COMPLAINT_STATUSES,Escalation,
     AuditLog,)
 
@@ -194,7 +194,28 @@ class InquirySerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+    
+class InquiryAttachmentSerializer(serializers.ModelSerializer):
+    
+    url = serializers.SerializerMethodField()
 
+    class Meta:
+        model = InquiryAttachment
+        fields = ['id', 'fileName', 'url', 'uploadedAt']
+
+    def get_url(self, obj):
+        request = self.context.get('request')
+        if request and obj.file:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url if obj.file else None
+
+
+class InquirySerializer(serializers.ModelSerializer):
+    attachments = InquiryAttachmentSerializer(source='attachment_files', many=True, read_only=True)
+
+    class Meta:
+        model = Inquiry
+        fields = '__all__'   # or your existing explicit field list — just make sure 'attachments' is included
 
 # =============================================================================
 # Followups  (§3)

@@ -23,3 +23,6 @@ export function listRoles() {
 export function createRole(name) {
   return api.post("/roles", { name });
 }
+export function deleteEmployee(id) {
+  return api.del(`/employees/${id}`);
+}

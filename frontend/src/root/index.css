@@ -115,3 +115,67 @@ button.bg-\[color\:var\(--ink\)\] {
   color: #fff !important;
   border-color: var(--ink) !important;
 }
+
+/* ============================================================
+   BUTTON HOVER — real, visible color change (fixes "hover is
+   just white" — previous rule only nudged the border color,
+   background never actually changed).
+   ============================================================ */
+
+button {
+  transition: background-color 140ms ease, border-color 140ms ease, transform 80ms ease, box-shadow 140ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.btn-icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-icon-label svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* Primary brass buttons — darker brass + subtle lift on hover */
+button.bg-\[color\:var\(--brass\)\]:hover:not(:disabled) {
+  background-color: var(--brass-dark) !important;
+  border-color: var(--brass-dark) !important;
+  box-shadow: 0 2px 8px rgba(173, 127, 39, 0.3);
+}
+
+/* Danger / delete buttons */
+.btn-danger-outline {
+  border: 1px solid var(--red) !important;
+  background: var(--red-bg) !important;
+  color: var(--red) !important;
+}
+.btn-danger-outline:hover:not(:disabled) {
+  background: var(--red) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(178, 58, 46, 0.25);
+}
+.btn-danger-outline:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Every plain bordered button (Edit, Cancel, filters, etc.) —
+   real tinted background on hover, not just a border nudge. */
+button:not(.bg-\[color\:var\(--brass\)\]):not(.btn-danger-outline):hover:not(:disabled) {
+  background-color: rgba(173, 127, 39, 0.08) !important;
+  border-color: var(--brass) !important;
+  color: var(--text) !important;
+}
+[data-theme="dark"] button:not(.bg-\[color\:var\(--brass\)\]):not(.btn-danger-outline):hover:not(:disabled) {
+  background-color: rgba(173, 127, 39, 0.14) !important;
+}

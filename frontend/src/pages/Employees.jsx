@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { roleLabels, rolePrivilegeDefaults, PERMISSIONS } from "../constants/roles";
-import { OPERATORS } from "../constants/lookups";
 import { fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { employees as employeesApi } from "../api";
+import { useConfirm } from "../hooks/useConfirm";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
 
 const emptyEmployee = { name: "", username: "", password: "", role: "call_operator", email: "" };
 
@@ -24,6 +26,24 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   const [editDraft, setEditDraft] = useState(null);
   const sel = useRowSelection((e) => e.id);
 
+  const { pending, confirm, cancel, run } = useConfirm();
+
+  async function bulkDelete() {
+    const rows = sel.selectedFrom(employees);
+    if (!rows.length) return;
+    confirm(`Permanently delete ${rows.length} employee(s)? This cannot be undone.`, async () => {
+      setBulkError("");
+      try {
+        await Promise.all(rows.map((e) => employeesApi.deleteEmployee(e.id)));
+        setEmployees((prev) => prev.filter((e) => !rows.some((r) => r.id === e.id)));
+        rows.forEach((e) => addAudit("Delete employee", e.username, "—", "Permanently removed"));
+        sel.clear();
+      } catch (err) {
+        setBulkError(err.body?.message || "Couldn't delete one or more employees — try again.");
+      }
+    });
+  }
+
   function openNew() { setDraft({ ...emptyEmployee, role: roles[0] || "call_operator" }); setSaveError(""); setModalOpen(true); }
   async function saveNew() {
     if (!draft.name.trim() || !draft.username.trim() || !draft.password.trim()) return;
@@ -36,7 +56,6 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
         email: draft.email.trim().toLowerCase(),
       });
       setEmployees((prev) => [...prev, created]);
-      if (created.role === "call_operator" && !OPERATORS.includes(created.name)) OPERATORS.push(created.name);
       addAudit("Add employee", "—", `${created.username} created`, `${created.name} · ${roleLabels[created.role] || created.role} — credentials sent by text`);
       setModalOpen(false);
     } catch (err) {
@@ -110,16 +129,29 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   return (
     <div>
       <div className="flex flex-wrap gap-2 mb-4 items-center">
-        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)]" onClick={() => { setSaveError(""); setRoleModalOpen(true); }}>New role</button>
-        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" style={{ marginLeft: "auto" }} onClick={openNew}>+ New employee</button>
+        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] btn-icon-label" onClick={() => { setSaveError(""); setRoleModalOpen(true); }}>
+          <PlusIcon /><span>New role</span>
+        </button>
+        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)] btn-icon-label" style={{ marginLeft: "auto" }} onClick={openNew}>
+          <PlusIcon /><span>New employee</span>
+        </button>
       </div>
 
       <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openPrivSelected}>Edit privileges</button>
-        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Active")}>Activate</button>
-        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--red)] bg-[color:var(--red-bg)] text-[color:var(--red)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Inactive")}>Deactivate</button>
-        {/* Delete goes here — see item 2.8, held until backend delete endpoint exists */}
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openPrivSelected}>
+          <EditIcon /><span>Edit privileges</span>
+        </button>
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Active")}>
+          <CheckIcon /><span>Activate</span>
+        </button>
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Inactive")}>
+          Deactivate
+        </button>
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkDelete}>
+          <DeleteIcon /><span>Delete</span>
+        </button>
       </BulkActionBar>
+
       {bulkError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>{bulkError}</div>}
 
       <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
@@ -197,6 +229,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setRoleModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
+      <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );
 }

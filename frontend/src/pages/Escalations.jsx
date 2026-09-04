@@ -3,6 +3,7 @@ import { Stamp, Field, Modal, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { escalations as escalationsApi } from "../api";
+import { CheckIcon } from "../components/icons";
 
 export default function Escalations({ escalations, setEscalations, addAudit, session }) {
   const [resolveTarget, setResolveTarget] = useState(null);
@@ -82,7 +83,9 @@ export default function Escalations({ escalations, setEscalations, addAudit, ses
 
       {canResolve && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={sel.selectedCount !== 1} onClick={openResolveSelected}>Mark resolved</button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed bg-[color:var(--brass)] text-white border-[color:var(--brass)] btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openResolveSelected}>
+            <CheckIcon /><span>Mark resolved</span>
+          </button>
         </BulkActionBar>
       )}
 

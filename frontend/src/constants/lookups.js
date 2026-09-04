@@ -1,18 +1,9 @@
-export const OPERATORS = ["Selamawit Bekele", "Dawit Alemu", "Hana Girma", "Yonas Tesfaye", "Meron Abebe"];
-
-export const AUCTIONS = [
-  "Vehicle Auction - July 2026",
-  "Industrial Equipment Auction",
-  "Real Estate Auction - Bole",
-  "Electronics Liquidation",
-  "Construction Machinery Auction",
-];
 
 // Not every inquiry/visitation is about one specific auction — some callers
 // just have a question about Auction Ethiopia itself. This keeps "Related
 // auction" from forcing operators to pick an irrelevant auction in that case.
 export const GENERAL_AUCTION_LABEL = "General — not about a specific auction (Auction Ethiopia)";
-export const AUCTION_SELECT_OPTIONS = [GENERAL_AUCTION_LABEL, ...AUCTIONS];
+
 
 export const CATEGORIES = [
   "Auction Information", "Registration Support", "Bidder Registration", "Bid Submission",

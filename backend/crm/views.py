@@ -25,6 +25,7 @@ from .serializers import (
     GoogleLoginSerializer,
 )
 from django.contrib.auth.models import User
+from rest_framework.parsers import MultiPartParser
 # =============================================================================
 # Shared helpers
 # =============================================================================
@@ -216,6 +217,19 @@ class EmployeeDetailView(APIView):
         # TO HERE
 
         return Response(EmployeeSerializer(employee).data)
+    
+    def delete(self, request, employee_id):
+        if not has_any_role('administrator')().has_permission(request, self):
+            return Response({'message': 'Only an Administrator can delete employees.'}, status=http_status.HTTP_403_FORBIDDEN)
+        try:
+            employee = Employee.objects.select_related('user').get(publicId=employee_id)
+        except Employee.DoesNotExist:
+            return Response({'message': 'Employee not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        username = employee.user.username
+        employee.user.delete()  # cascades to Employee
+        log_audit(request, 'Delete employee', username, '—', 'Permanently removed')
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
+
 
 
 class EmployeePrivilegesView(APIView):
@@ -329,7 +343,36 @@ class InquiryDetailView(APIView):
             log_audit(request, 'Edit inquiry', '—', updated.publicId, f'Details updated for {updated.callerName}')
 
         return Response(InquirySerializer(updated).data)
+    def delete(self, request, inquiry_id):
+        if not has_any_role('administrator')().has_permission(request, self):
+            return Response({'message': 'Only an Administrator can delete inquiries.'}, status=http_status.HTTP_403_FORBIDDEN)
+        inquiry = self.get_object(inquiry_id)
+        if inquiry is None: 
+            return Response({'message': 'Inquiry not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        pid, caller = inquiry.publicId, inquiry.callerName
+        inquiry.delete()
+        log_audit(request, 'Delete inquiry', f'{pid} · {caller}', '—', 'Permanently removed')
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
 
+
+class InquiryAttachmentView(APIView):
+    parser_classes = [MultiPartParser]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, inquiry_id):
+        inquiry = get_object_or_404(Inquiry, publicId=inquiry_id)
+        f = request.FILES.get('file')
+        if not f:
+            return Response({'message': 'file is required'}, status=400)
+        att = InquiryAttachment.objects.create(
+            inquiry=inquiry, file=f, fileName=f.name, fileSize=f.size, uploadedBy=request.user
+        )
+        return Response({'id': att.id, 'fileName': att.fileName, 'url': att.file.url, 'uploadedAt': att.uploadedAt})
+
+    def delete(self, request, inquiry_id, attachment_id):
+        att = get_object_or_404(InquiryAttachment, id=attachment_id, inquiry__publicId=inquiry_id)
+        att.delete()
+        return Response(status=204)
 
 # =============================================================================
 # Followups  (§3)
@@ -443,6 +486,18 @@ class VisitSetupDetailView(APIView):
         updated = serializer.save()
         log_audit(request, 'Edit visit setup', '—', updated.publicId, f'{updated.company} · {updated.batch}')
         return Response(VisitSetupSerializer(updated).data)
+    
+    def delete(self, request, visit_setup_id):
+        if not has_any_role('administrator')().has_permission(request, self):
+            return Response({'message': 'Only an Administrator can delete visit setups.'}, status=http_status.HTTP_403_FORBIDDEN)
+        try:
+            vs = VisitSetup.objects.get(publicId=visit_setup_id)
+        except VisitSetup.DoesNotExist:
+            return Response({'message': 'Visit setup not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        pid = vs.publicId
+        vs.delete()
+        log_audit(request, 'Delete visit setup', pid, '—', 'Permanently removed')
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
 # =============================================================================
@@ -503,6 +558,18 @@ class AppointmentDetailView(APIView):
             )
 
         return Response(AppointmentSerializer(updated).data)
+    
+    def delete(self, request, appointment_id):
+        if not has_any_role('administrator', 'auction_manager')().has_permission(request, self):
+            return Response({'message': 'You do not have permission to delete visitations.'}, status=http_status.HTTP_403_FORBIDDEN)
+        try:
+            appt = Appointment.objects.get(publicId=appointment_id)
+        except Appointment.DoesNotExist:
+            return Response({'message': 'Appointment not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        pid, name = appt.publicId, appt.visitorName
+        appt.delete()
+        log_audit(request, 'Delete visitation', f'{pid} · {name}', '—', 'Permanently removed')
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
 # =============================================================================
@@ -559,6 +626,18 @@ class ComplaintDetailView(APIView):
             )
 
         return Response(ComplaintSerializer(updated).data)
+    
+    def delete(self, request, complaint_id):
+        if not has_any_role('administrator', 'auction_manager')().has_permission(request, self):
+            return Response({'message': 'You do not have permission to delete complaints.'}, status=http_status.HTTP_403_FORBIDDEN)
+        try:
+            c = Complaint.objects.get(publicId=complaint_id)
+        except Complaint.DoesNotExist:
+            return Response({'message': 'Complaint not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        pid, caller = c.publicId, c.callerName
+        c.delete()
+        log_audit(request, 'Delete complaint', f'{pid} · {caller}', '—', 'Permanently removed')
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
 # =============================================================================
@@ -655,9 +734,15 @@ class AuditLogListView(APIView):
             qs = qs.filter(action__icontains=action)
 
         return Response(AuditLogSerializer(qs, many=True).data)
-    
 
+class AuditLogClearView(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def delete(self, request):
+        if not has_any_role('administrator')().has_permission(request, self):
+            return Response({'message': 'Only an Administrator can clear the audit trail.'}, status=http_status.HTTP_403_FORBIDDEN)
+        count, _ = AuditLog.objects.all().delete()
+        return Response({'deleted': count})
 
 
 class GoogleLoginView(APIView):

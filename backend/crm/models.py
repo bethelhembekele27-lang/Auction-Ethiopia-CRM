@@ -146,7 +146,6 @@ class Inquiry(models.Model):
     resolutionNotes = models.TextField(blank=True, default='')
     resolvedDate = models.DateField(null=True, blank=True)
 
-    attachments = models.JSONField(default=list, blank=True)  # list of filenames
 
     createdAt = models.DateTimeField(auto_now_add=True)
     updatedAt = models.DateTimeField(auto_now=True)
@@ -163,7 +162,15 @@ class Inquiry(models.Model):
 # =============================================================================
 # Followup  (§3)
 # =============================================================================
-
+# invoices/models.py (or crm app equivalent) — new model
+class InquiryAttachment(models.Model):
+    inquiry = models.ForeignKey(Inquiry, on_delete=models.CASCADE, related_name='attachment_files')
+    file = models.FileField(upload_to='inquiry_attachments/')
+    fileName = models.CharField(max_length=255)
+    fileSize = models.IntegerField(default=0)
+    uploadedAt = models.DateTimeField(auto_now_add=True)
+    uploadedBy = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+        
 class Followup(models.Model):
     publicId = models.CharField(max_length=20, unique=True, editable=False)
 

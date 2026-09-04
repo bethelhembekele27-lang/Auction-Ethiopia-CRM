@@ -30,7 +30,11 @@ import * as api from "../api";
 export default function App() {
   const [page, setPage] = useState("dashboard");
   const [session, setSession] = useState(null);
-  const [theme, setTheme] = useState("light");
+  const [theme, setTheme] = useState(() => localStorage.getItem("crm_theme") || "light");
+  useEffect(() => {
+    localStorage.setItem("crm_theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
 
   const [inquiries, setInquiries] = useState([]);
@@ -84,20 +88,25 @@ export default function App() {
     setLoading(true);
     setLoadError("");
     try {
-      const [
-        inquiriesRes, followupsRes, appointmentsRes, visitSetupsRes,
-        complaintsRes, escalationsRes, auditRes, employeesRes, rolesRes,
-      ] = await Promise.all([
+      const isAdminLike = session && ADMIN_LIKE_ROLES.includes(session.role);
+
+      const results = await Promise.allSettled([
         api.inquiries.listInquiries(),
         api.followups.listFollowups(),
         api.appointments.listAppointments(),
         api.visitSetups.listVisitSetups(),
         api.complaints.listComplaints(),
         api.escalations.listEscalations(),
-        api.audit.listAuditLog(),
+        isAdminLike ? api.audit.listAuditLog() : Promise.resolve([]),
         api.employees.listEmployees(),
         api.employees.listRoles(),
       ]);
+
+      const [
+        inquiriesRes, followupsRes, appointmentsRes, visitSetupsRes,
+        complaintsRes, escalationsRes, auditRes, employeesRes, rolesRes,
+      ] = results.map((r) => (r.status === "fulfilled" ? r.value : null));
+
       setInquiries(inquiriesRes || []);
       setFollowups(followupsRes || []);
       setAppointments(appointmentsRes || []);
@@ -107,12 +116,19 @@ export default function App() {
       setAuditLog(auditRes || []);
       setEmployees(employeesRes || []);
       if (rolesRes && rolesRes.length) setRoles(rolesRes);
+
+      // Only surface a real error banner if something unexpected failed —
+      // not for endpoints this role isn't supposed to access anyway.
+      const unexpectedFailure = results.some((r, i) => r.status === "rejected" && !(i === 6 && !isAdminLike));
+      if (unexpectedFailure) {
+        setLoadError("Some data couldn't be loaded — try refreshing.");
+      }
     } catch (err) {
       setLoadError(err.body?.message || "Couldn't load data from the server.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [session]);
 
   useEffect(() => {
     if (session) loadAllData();
@@ -175,16 +191,16 @@ export default function App() {
                 <Inquiries
                   inquiries={inquiries} setInquiries={setInquiries} setFollowups={setFollowups}
                   setAppointments={setAppointments} setComplaints={setComplaints} setEscalations={setEscalations}
-                  visitSetups={visitSetups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session}
+                  visitSetups={visitSetups} employees={employees} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session}
                 />
               )}
               {page === "callers" && <Callers inquiries={inquiries} followups={followups} appointments={appointments} />}
               {page === "followups" && <Followups followups={followups} setFollowups={setFollowups} canEdit={canEdit} addAudit={addAudit} />}
               {page === "visitsetup" && <VisitSetups visitSetups={visitSetups} setVisitSetups={setVisitSetups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
               {page === "visitations" && <Visitations appointments={appointments} setAppointments={setAppointments} visitSetups={visitSetups} setFollowups={setFollowups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
-              {page === "complaints" && <Complaints complaints={complaints} setComplaints={setComplaints} genId={genId} canEdit={canEdit} addAudit={addAudit} />}
+              {page === "complaints" && <Complaints complaints={complaints} setComplaints={setComplaints} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />} 
               {page === "reports" && canSeePage("reports") && <Reports inquiries={inquiries} appointments={appointments} complaints={complaints} />}
-              {page === "audit" && canSeePage("audit") && <Audit auditLog={auditLog} session={session} />}
+              {page === "audit" && canSeePage("audit") && <Audit auditLog={auditLog} setAuditLog={setAuditLog} session={session} />}
               {page === "escalations" && canSeePage("escalations") && (
                 <Escalations escalations={escalations} setEscalations={setEscalations} addAudit={addAudit} session={session} />
               )}

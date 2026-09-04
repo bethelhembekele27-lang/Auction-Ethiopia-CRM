@@ -44,9 +44,25 @@ async function request(path, { method = "GET", body, params } = {}) {
   return data;
 }
 
+
+
+async function requestForm(path, formData) {
+  const url = `${BASE_URL}${path}`;
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url, { method: "POST", headers, body: formData });
+  const isJson = (res.headers.get("content-type") || "").includes("application/json");
+  const data = isJson ? await res.json() : await res.text();
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
 export const api = {
   get: (path, params) => request(path, { method: "GET", params }),
   post: (path, body) => request(path, { method: "POST", body }),
   patch: (path, body) => request(path, { method: "PATCH", body }),
   del: (path) => request(path, { method: "DELETE" }),
+  postForm: (path, formData) => requestForm(path, formData),
 };

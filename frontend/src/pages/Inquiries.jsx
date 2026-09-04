@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { CATEGORIES, PRIORITIES, STATUSES, OPERATORS, COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
+import { useState, useMemo, useRef } from "react";
+import { CATEGORIES, PRIORITIES, STATUSES, COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
 import { todayISO, fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
@@ -8,14 +8,18 @@ import { emptyAppt } from "./Visitations";
 import { isSetupOpen } from "./VisitSetups";
 import { emptyComplaint } from "./Complaints";
 import { inquiries as inquiriesApi, appointments as appointmentsApi, followups as followupsApi, complaints as complaintsApi, escalations as escalationsApi } from "../api";
+import { useConfirm } from "../hooks/useConfirm";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { EditIcon, DeleteIcon, CalendarIcon, SendIcon } from "../components/icons";
+import AutoCompleteField from "../components/AutoCompleteField";
 
 const emptyInquiry = {
   id: "", callerName: "", phone: "", company: "", auction: "", batch: "", category: CATEGORIES[0],
-  priority: "Medium", operator: OPERATORS[0], dateTime: "", description: "", status: "Open",
+  priority: "Medium", operator: "", dateTime: "", description: "", status: "Open",
   followUpDate: "", resolutionNotes: "", resolvedDate: "", attachments: [],
 };
 
-export default function Inquiries({ inquiries, setInquiries, setFollowups, setAppointments, setComplaints, setEscalations, visitSetups, session, canEdit, addAudit }) {
+export default function Inquiries({ inquiries, setInquiries, setFollowups, setAppointments, setComplaints, setEscalations, visitSetups, employees, session, canEdit, addAudit }) {
   const [query, setQuery] = useState("");
   const [fCategory, setFCategory] = useState("All");
   const [fPriority, setFPriority] = useState("All");
@@ -25,9 +29,9 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyInquiry);
-  const [attachName, setAttachName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+
 
   const [apptModalOpen, setApptModalOpen] = useState(false);
   const [apptDraft, setApptDraft] = useState(null);
@@ -54,6 +58,15 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     }
     return openVisitSetups;
   }, [openVisitSetups, visitSetups, apptDraft]);
+
+  const auctionOptions = useMemo(
+    () => [...new Set(inquiries.map((i) => i.auction).filter(Boolean))].sort(),
+    [inquiries]
+  );
+  const batchOptions = useMemo(
+    () => [...new Set(inquiries.map((i) => i.batch).filter(Boolean))].sort(),
+    [inquiries]
+  );
   const selectedSetup = apptDraft ? (visitSetups || []).find((v) => v.id === apptDraft.setupId) : null;
 
   const filtered = useMemo(() => {
@@ -70,24 +83,65 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     }).sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime));
   }, [inquiries, query, fCategory, fPriority, fStatus, fOperator]);
 
+  const operatorOptions = useMemo(
+    () => (employees || []).filter((e) => e.role === "call_operator").map((e) => e.name),
+    [employees]
+  );
   // Single-selected row, used to enable/disable every per-record action
   // button in the top bar below.
   const soleSelected = useMemo(() => {
     const rows = sel.selectedFrom(filtered);
     return rows.length === 1 ? rows[0] : null;
   }, [sel.selected, filtered]);
+  const { pending, confirm, cancel, run } = useConfirm();
+  async function bulkDelete() {
+    const rows = sel.selectedFrom(filtered);
+    if (!rows.length) return;
+    confirm(`Permanently delete ${rows.length} inquiry(ies)? This cannot be undone.`, async () => {
+      try {
+        await Promise.all(rows.map((i) => inquiriesApi.deleteInquiry(i.id)));
+        setInquiries((prev) => prev.filter((i) => !rows.some((r) => r.id === i.id)));
+        rows.forEach((i) => addAudit("Delete inquiry", `${i.id} · ${i.callerName}`, "—", "Permanently removed"));
+        sel.clear();
+      } catch (err) {
+        setSaveError(err.body?.message || "Couldn't delete one or more inquiries — try again.");
+      }
+    });
+  }
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  async function handleFileSelected(e) {
+    const file = e.target.files?.[0];
+    if (!file || !editing) return; // real upload needs a saved inquiry id — see note below
+    setUploading(true);
+    try {
+      const uploaded = await inquiriesApi.uploadAttachment(editing, file);
+      setDraft((d) => ({ ...d, attachments: [...d.attachments, uploaded] }));
+    } catch (err) {
+      setSaveError(err.body?.message || "Couldn't upload file — try again.");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  async function removeAttachment(att) {
+    if (editing && att.id) {
+      try { await inquiriesApi.deleteAttachment(editing, att.id); } catch { /* best effort */ }
+    }
+    setDraft((d) => ({ ...d, attachments: d.attachments.filter((a) => a !== att) }));
+  }
 
   function openNew() {
     setEditing(null);
-    setDraft({ ...emptyInquiry, dateTime: new Date().toISOString().slice(0, 16) });
-    setAttachName("");
+    setDraft({ ...emptyInquiry, operator: operatorOptions[0] || "", dateTime: new Date().toISOString().slice(0, 16) });
     setSaveError("");
     setModalOpen(true);
   }
   function openEdit(i) {
     setEditing(i.id);
-    setDraft({ ...i });
-    setAttachName("");
+    setDraft({ ...i });  
     setSaveError("");
     setModalOpen(true);
   }
@@ -98,9 +152,14 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     if (["Resolved", "Closed"].includes(record.status) && !record.resolvedDate) {
       record.resolvedDate = todayISO();
     }
+    // DRF DateFields reject "" — convert empty date strings to null
+    if (!record.followUpDate) record.followUpDate = null;
+    if (!record.resolvedDate) record.resolvedDate = null;
+
     setSaving(true);
     setSaveError("");
     try {
+    // ...rest unchanged
       if (editing) {
         const prev = inquiries.find((i) => i.id === editing);
         const updated = await inquiriesApi.updateInquiry(editing, record);
@@ -123,12 +182,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       setSaving(false);
     }
   }
-  function addAttachment() {
-    if (!attachName.trim()) return;
-    setDraft((d) => ({ ...d, attachments: [...d.attachments, attachName.trim()] }));
-    setAttachName("");
-  }
-
+  
   function openEscalationFor(inq) {
     if (inq.priority !== "Urgent") return;
     setEscDraft({ inquiryId: inq.id, callerName: inq.callerName, note: "" });
@@ -245,18 +299,35 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           <option value="All">All statuses</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}
         </select>
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fOperator} onChange={(e) => setFOperator(e.target.value)}>
-          <option value="All">All operators</option>{OPERATORS.map((o) => <option key={o}>{o}</option>)}
+          <option value="All">All operators</option>{operatorOptions.map((o) => <option key={o}>{o}</option>)}
         </select>
         {session.role === "call_operator" && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" style={{ marginLeft: "auto" }} onClick={openNew}>+ New inquiry</button>}
       </div>
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!soleSelected} onClick={openEditSelected}>Edit</button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!soleSelected} onClick={openVisitationSelected}>Book visitation</button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!soleSelected} onClick={openComplaintSelected}>Complaint</button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!soleSelected} onClick={openEditSelected}>
+            <EditIcon /><span>Edit</span>
+          </button>
+
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!soleSelected} onClick={openVisitationSelected}>
+            <CalendarIcon /><span>Book visitation</span>
+          </button>
+
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!soleSelected} onClick={openComplaintSelected}>
+            Complaint
+          </button>
+
           {session.role === "call_operator" && (
-            <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--red)] bg-[color:var(--red-bg)] text-[color:var(--red)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!canEscalateSelected} title={soleSelected && soleSelected.priority !== "Urgent" ? "Only Urgent inquiries can be sent to the manager" : ""} onClick={openEscalationSelected}>Send to manager</button>
+            <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--red)] bg-[color:var(--red-bg)] text-[color:var(--red)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!canEscalateSelected} title={soleSelected && soleSelected.priority !== "Urgent" ? "Only Urgent inquiries can be sent to the manager" : ""} onClick={openEscalationSelected}>
+              <SendIcon /><span>Send to manager</span>
+            </button>
+          )}
+
+          {session.role === "administrator" && (
+            <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--red)] bg-[color:var(--red-bg)] text-[color:var(--red)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkDelete}>
+              <DeleteIcon /><span>Delete</span>
+            </button>
           )}
         </BulkActionBar>
       )}
@@ -294,10 +365,20 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           <Field label="Phone number"><input className={inputCls} value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></Field>
           <Field label="Company (optional)"><input className={inputCls} value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} /></Field>
           <Field label="Related auction (optional)">
-            <input className={inputCls} placeholder="e.g. Vehicle Auction - July 2026 — leave blank if not about a specific auction" value={draft.auction} onChange={(e) => setDraft({ ...draft, auction: e.target.value })} />
+            <AutoCompleteField
+              value={draft.auction}
+              onChange={(v) => setDraft({ ...draft, auction: v })}
+              options={auctionOptions}
+              placeholder="Choose a past auction or type a new one — leave blank if general"
+            />
           </Field>
           <Field label="Auction batch (optional)">
-            <input className={inputCls} placeholder="e.g. Batch 2 — leave blank if calling about the company in general" value={draft.batch} onChange={(e) => setDraft({ ...draft, batch: e.target.value })} />
+            <AutoCompleteField
+              value={draft.batch}
+              onChange={(v) => setDraft({ ...draft, batch: v })}
+              options={batchOptions}
+              placeholder="Choose a past batch or type a new one"
+            />
           </Field>
           <Field label="Category">
             <select className={inputCls} value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
@@ -306,7 +387,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
             <select className={inputCls} value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</select>
           </Field>
           <Field label="Assigned operator">
-            <select className={inputCls} value={draft.operator} onChange={(e) => setDraft({ ...draft, operator: e.target.value })}>{OPERATORS.map((o) => <option key={o}>{o}</option>)}</select>
+            <select className={inputCls} value={draft.operator} onChange={(e) => setDraft({ ...draft, operator: e.target.value })}>{operatorOptions.map((o) => <option key={o}>{o}</option>)}</select>
           </Field>
           <Field label="Date & time"><input type="datetime-local" className={inputCls} value={draft.dateTime} onChange={(e) => setDraft({ ...draft, dateTime: e.target.value })} /></Field>
           <Field label="Status">
@@ -320,19 +401,28 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
             <textarea className={inputCls} rows={2} value={draft.resolutionNotes} onChange={(e) => setDraft({ ...draft, resolutionNotes: e.target.value })} />
           </Field>
         </div>
+
         <div className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[color:var(--text-2)]" style={{ margin: "18px 0 8px" }}>Attachments</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {draft.attachments.map((a, idx) => (
-            <div className="flex items-center gap-2 text-[13px] px-2.5 py-2 rounded-[5px] bg-[color:var(--paper)]" key={idx}>
-              {a}
-              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-transparent" style={{ marginLeft: "auto" }} onClick={() => setDraft((d) => ({ ...d, attachments: d.attachments.filter((_, x) => x !== idx) }))}>Remove</button>
+            <div className="flex items-center gap-2 text-[13px] px-2.5 py-2 rounded-[5px] bg-[color:var(--paper)]" key={a.id || idx}>
+              {a.fileName || a}
+              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-transparent" style={{ marginLeft: "auto" }} onClick={() => removeAttachment(a)}>Remove</button>
             </div>
           ))}
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <input className={inputCls} placeholder="file_name.pdf" value={attachName} onChange={(e) => setAttachName(e.target.value)} />
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs" onClick={addAttachment}>Attach</button>
+          <input ref={fileInputRef} type="file" onChange={handleFileSelected} style={{ display: "none" }} disabled={!editing || uploading} />
+          <button
+            className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs"
+            disabled={!editing || uploading}
+            title={!editing ? "Save the inquiry first, then attach files" : ""}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? "Uploading…" : "Attach file"}
+          </button>
         </div>
+        {!editing && <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4 }}>Save this inquiry first — attachments upload directly to the saved record.</div>}
         {saveError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 12 }}>{saveError}</div>}
         <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={saving} onClick={save}>{saving ? "Saving…" : editing ? "Save changes" : "Create inquiry"}</button>
@@ -415,6 +505,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           </>
         )}
       </Modal>
+      <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );
 }

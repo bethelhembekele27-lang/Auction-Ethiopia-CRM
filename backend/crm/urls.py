@@ -7,6 +7,7 @@ from .views import (
     EmployeePrivilegesView,
     InquiryDetailView,
     InquiryListCreateView,
+    InquiryAttachmentView,
     RoleListCreateView,
     FollowupListCreateView,
     FollowupDetailView,
@@ -19,6 +20,7 @@ from .views import (
     EscalationListCreateView,
     EscalationResolveView,
     AuditLogListView,
+    AuditLogClearView,
     GoogleLoginView,
 )
 
@@ -51,4 +53,8 @@ urlpatterns = [
     path('escalations/<str:escalation_id>/resolve', EscalationResolveView.as_view(), name='escalation-resolve'),
 
     path('audit', AuditLogListView.as_view(), name='audit-list'),
+    path('audit/clear/', AuditLogClearView.as_view()),
+    # urls.py
+    path('inquiries/<str:inquiry_id>/attachments/', InquiryAttachmentView.as_view()),
+    path('inquiries/<str:inquiry_id>/attachments/<int:attachment_id>/', InquiryAttachmentView.as_view()),
 ]

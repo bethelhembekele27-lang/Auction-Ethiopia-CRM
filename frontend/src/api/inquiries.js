@@ -32,3 +32,16 @@ export function createVisitationFromInquiry(inquiryId, data) {
 export function createComplaintFromInquiry(inquiryId, data) {
   return api.post(`/inquiries/${inquiryId}/complaints`, data);
 }
+export function deleteInquiry(id) {
+  return api.del(`/inquiries/${id}`);
+}
+
+export function uploadAttachment(inquiryId, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return api.postForm(`/inquiries/${inquiryId}/attachments`, formData);
+}
+
+export function deleteAttachment(inquiryId, attachmentId) {
+  return api.del(`/inquiries/${inquiryId}/attachments/${attachmentId}`);
+} 

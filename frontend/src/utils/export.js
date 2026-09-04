@@ -1,3 +1,5 @@
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 /* --- generic export helpers used by the Reports report-builder --- */
 export function rowsToCSV(rows) {
   if (!rows.length) return "";
@@ -5,7 +7,6 @@ export function rowsToCSV(rows) {
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   return [headers.join(","), ...rows.map((r) => headers.map((h) => esc(r[h])).join(","))].join("\n");
 }
-
 export function downloadFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -22,24 +23,24 @@ export function exportRowsCSV(filenameBase, rows) {
 
 export function exportRowsPDF(title, rows) {
   if (!rows.length) return;
+  const doc = new jsPDF({ orientation: "landscape" });
   const headers = Object.keys(rows[0]);
-  const win = window.open("", "_blank");
-  if (!win) return;
-  const esc = (v) => String(v ?? "").replace(/</g, "&lt;");
-  win.document.write(
-    "<html><head><title>" + esc(title) + "</title><style>" +
-    "body{font-family:Arial,Helvetica,sans-serif;padding:28px;color:#1B1D1F;}" +
-    "h1{font-size:19px;margin:0 0 4px;} .meta{font-size:12px;color:#63675F;margin-bottom:18px;}" +
-    "table{width:100%;border-collapse:collapse;font-size:12px;} th,td{border:1px solid #DEE0DA;padding:6px 8px;text-align:left;}" +
-    "th{background:#F4EBD6;text-transform:uppercase;font-size:10.5px;letter-spacing:.03em;}" +
-    "</style></head><body>" +
-    "<h1>" + esc(title) + "</h1>" +
-    "<div class=\"meta\">Generated " + esc(new Date().toLocaleString()) + " · " + rows.length + " record(s)</div>" +
-    "<table><thead><tr>" + headers.map((h) => "<th>" + esc(h) + "</th>").join("") + "</tr></thead><tbody>" +
-    rows.map((r) => "<tr>" + headers.map((h) => "<td>" + esc(r[h]) + "</td>").join("") + "</tr>").join("") +
-    "</tbody></table></body></html>"
-  );
-  win.document.close();
-  win.focus();
-  win.print();
+
+  doc.setFontSize(14);
+  doc.text(title, 14, 16);
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text(`Generated ${new Date().toLocaleString()} · ${rows.length} record(s)`, 14, 22);
+
+  autoTable(doc, {
+    startY: 28,
+    head: [headers],
+    body: rows.map((r) => headers.map((h) => String(r[h] ?? ""))),
+    styles: { fontSize: 8, cellPadding: 3 },
+    headStyles: { fillColor: [173, 127, 39], textColor: 255 }, // matches --brass
+    alternateRowStyles: { fillColor: [249, 249, 247] },
+  });
+
+  const filename = `${title.replace(/\s+/g, "_").toLowerCase()}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  doc.save(filename);
 }

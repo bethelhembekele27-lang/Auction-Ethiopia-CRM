@@ -4,6 +4,9 @@ import { Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { visitSetups as visitSetupsApi } from "../api";
+import { useConfirm } from "../hooks/useConfirm";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { EditIcon, DeleteIcon, PlusIcon } from "../components/icons";
 
 const emptyVisitSetup = {
   id: "", company: "", batch: "", dateFrom: "", dateTo: "", address: "", items: "",
@@ -71,6 +74,22 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
   const [saveError, setSaveError] = useState("");
 
   const sel = useRowSelection((v) => v.id);
+  const { pending, confirm, cancel, run } = useConfirm();
+  async function bulkDelete() {
+    const rows = sel.selectedFrom(filtered);
+    if (!rows.length) return;
+    confirm(`Permanently delete ${rows.length} visit setup(s)? This cannot be undone.`, async () => {
+      setSaveError("");
+      try {
+        await Promise.all(rows.map((v) => visitSetupsApi.deleteVisitSetup(v.id)));
+        setVisitSetups((prev) => prev.filter((v) => !rows.some((r) => r.id === v.id)));
+        rows.forEach((v) => addAudit("Delete visit setup", `${v.id} · ${v.company}`, "—", "Permanently removed"));
+        sel.clear();
+      } catch (err) {
+        setSaveError(err.body?.message || "Couldn't delete one or more visit setups — try again.");
+      }
+    });
+  }
 
   const filtered = useMemo(() => {
     if (!query) return visitSetups;
@@ -128,16 +147,21 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
     <div>
       <div className="flex flex-wrap gap-2 mb-4 items-center">
         <input className="w-[220px] font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" placeholder="Search company, batch, guide…" value={query} onChange={(e) => setQuery(e.target.value)} />
-        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" style={{ marginLeft: "auto" }} onClick={openNew}>+ New visit setup</button>}
+        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)] btn-icon-label" style={{ marginLeft: "auto" }} onClick={openNew}>
+          <PlusIcon /><span>New visit setup</span>
+        </button>}
       </div>
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>Edit</button>
-          {/* Delete goes here — see item 2.8, held until backend delete endpoint exists */}
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
+            <EditIcon /><span>Edit</span>
+          </button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkDelete}>
+            <DeleteIcon /><span>Delete</span>
+          </button>
         </BulkActionBar>
       )}
-
       {filtered.length === 0 ? <EmptyState text="No visit setups registered yet." /> : (
         <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
           <div style={{ overflowX: "auto" }}>
@@ -185,6 +209,7 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
+      <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );
 }

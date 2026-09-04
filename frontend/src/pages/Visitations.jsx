@@ -6,6 +6,9 @@ import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSe
 import { useRowSelection } from "../hooks/useRowSelection";
 import { isSetupOpen } from "./VisitSetups";
 import { appointments as appointmentsApi, followups as followupsApi } from "../api";
+import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
+import { useConfirm } from "../hooks/useConfirm";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 export const emptyAppt = {
   id: "", auction: "", visitorName: "", phone: "", company: "",
@@ -35,6 +38,23 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   const [bulkError, setBulkError] = useState("");
 
   const sel = useRowSelection((a) => a.id);
+  const { pending, confirm, cancel, run } = useConfirm();
+
+  async function bulkDelete() {
+    const rows = sel.selectedFrom(sorted);
+    if (!rows.length) return;
+    confirm(`Permanently delete ${rows.length} visitation(s)? This cannot be undone.`, async () => {
+      setBulkError("");
+      try {
+        await Promise.all(rows.map((a) => appointmentsApi.deleteAppointment(a.id)));
+        setAppointments((prev) => prev.filter((a) => !rows.some((r) => r.id === a.id)));
+        rows.forEach((a) => addAudit("Delete visitation", `${a.id} · ${a.visitorName}`, "—", "Permanently removed"));
+        sel.clear();
+      } catch (err) {
+        setBulkError(err.body?.message || "Couldn't delete one or more visitations — try again.");
+      }
+    });
+  }
 
   const companyOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.company))], [visitSetups]);
   const batchOptions = useMemo(
@@ -51,6 +71,11 @@ export default function Visitations({ appointments, setAppointments, visitSetups
     }
     return openVisitSetups;
   }, [openVisitSetups, visitSetups, draft.setupId]);
+
+  const auctionOptions = useMemo(
+    () => [...new Set(appointments.map((a) => a.auction).filter(Boolean))].sort(),
+    [appointments]
+  );
 
   const filtered = appointments.filter((a) => {
     if (pickDate) { if (a.visitDate !== pickDate) return false; }
@@ -151,15 +176,30 @@ export default function Visitations({ appointments, setAppointments, visitSetups
         </select>
         {(when !== "all" || pickDate || fCompany !== "All" || fBatch !== "All" || fGuide !== "All") &&
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent px-2.5 py-[5px] text-xs" onClick={() => { clearWhen(); setFCompany("All"); setFBatch("All"); setFGuide("All"); }}>Clear filters</button>}
-        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" style={{ marginLeft: "auto" }} onClick={openNew}>+ Register visitor</button>}
+        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)] btn-icon-label" style={{ marginLeft: "auto" }} onClick={openNew}>
+          <PlusIcon /><span>Register visitor</span>
+        </button>}
       </div>
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>Edit</button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--blue)] bg-[color:var(--blue-bg)] text-[color:var(--blue)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Confirmed")}>Mark Confirmed</button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Completed")}>Mark Completed</button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--red)] bg-[color:var(--red-bg)] text-[color:var(--red)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Cancelled")}>Mark Cancelled</button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
+            <EditIcon /><span>Edit</span>
+          </button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--blue)] bg-[color:var(--blue-bg)] text-[color:var(--blue)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Confirmed")}>
+            <CheckIcon /><span>Mark Confirmed</span>
+          </button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Completed")}>
+            <CheckIcon /><span>Mark Completed</span>
+          </button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Cancelled")}>
+            Mark Cancelled
+          </button>
+          {session && ["administrator", "auction_manager"].includes(session.role) && (
+            <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkDelete}>
+              <DeleteIcon /><span>Delete</span>
+            </button>
+          )}
         </BulkActionBar>
       )}
       {bulkError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>{bulkError}</div>}
@@ -221,6 +261,7 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
+      <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );
 }

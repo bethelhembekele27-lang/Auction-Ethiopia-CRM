@@ -10,4 +10,8 @@ export function createComplaint(data) {
 
 export function updateComplaint(id, data) {
   return api.patch(`/complaints/${id}`, data);
-} 
+}
+
+export function deleteComplaint(id) {
+  return api.del(`/complaints/${id}`);
+}

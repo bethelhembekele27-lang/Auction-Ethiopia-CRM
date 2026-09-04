@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
-import { AUCTIONS, PRIORITIES, STATUSES, APPT_STATUSES } from "../constants/lookups";
+import { PRIORITIES, STATUSES, APPT_STATUSES } from "../constants/lookups";
 import { todayISO, fmtDate } from "../utils/format";
 import { exportRowsCSV, exportRowsPDF } from "../utils/export";
 import { Field, EmptyState, inputCls } from "../components/ui";
+import { DownloadIcon } from "../components/icons";
 
 const REPORT_TYPES = [
   { key: "all", label: "All" },
@@ -17,6 +18,13 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
     const set = new Set(inquiries.map((i) => i.company || "Auction Ethiopia (general)"));
     return ["Any company", ...Array.from(set).sort()];
   }, [inquiries]);
+  const auctionOptions = useMemo(() => {
+    const set = new Set([
+      ...inquiries.map((i) => i.auction).filter(Boolean),
+      ...appointments.map((a) => a.auction).filter(Boolean),
+    ]);
+    return Array.from(set).sort();
+  }, [inquiries, appointments]);
 
   const [rType, setRType] = useState("inquiries");
   const [rCompany, setRCompany] = useState("Any company");
@@ -136,7 +144,7 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
         {usesAuctionFields && (
           <Field label="Auction (optional)">
             <select className={inputCls} value={rAuction} onChange={(e) => setRAuction(e.target.value)}>
-              <option>Any auction</option>{AUCTIONS.map((a) => <option key={a}>{a}</option>)}
+              <option>Any auction</option>{auctionOptions.map((a) => <option key={a}>{a}</option>)}
             </select>
           </Field>
         )}
@@ -179,9 +187,13 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
         </div>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--ink)] text-white border-[color:var(--ink)]" onClick={preview}>Preview report</button>
-        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)]" disabled={!previewRows || !previewRows.length} onClick={() => exportRowsCSV(rType + "-report-" + todayISO(), previewRows)}>Export Excel (CSV)</button>
-        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)]" disabled={!previewRows || !previewRows.length} onClick={() => exportRowsPDF(reportTitle, previewRows)}>Export PDF</button>
+        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--ink)] text-white border-[color:var(--ink)] btn-icon-label" onClick={preview}>Preview report</button>
+        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] btn-icon-label" disabled={!previewRows || !previewRows.length} onClick={() => exportRowsCSV(rType + "-report-" + todayISO(), previewRows)}>
+          <DownloadIcon /><span>Export Excel (CSV)</span>
+        </button>
+        <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] btn-icon-label" disabled={!previewRows || !previewRows.length} onClick={() => exportRowsPDF(reportTitle, previewRows)}>
+          <DownloadIcon /><span>Export PDF</span>
+        </button>
       </div>
 
       {previewRows && (
