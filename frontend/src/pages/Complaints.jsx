@@ -180,7 +180,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-4 items-center">
+     <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] p-3.5 flex flex-wrap gap-2 items-center mb-4">
         <select
           className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]"
           value={fStatus}

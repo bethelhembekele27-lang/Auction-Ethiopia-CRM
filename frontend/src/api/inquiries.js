@@ -39,9 +39,9 @@ export function deleteInquiry(id) {
 export function uploadAttachment(inquiryId, file) {
   const formData = new FormData();
   formData.append("file", file);
-  return api.postForm(`/inquiries/${inquiryId}/attachments`, formData);
+  return api.postForm(`/inquiries/${inquiryId}/attachments/`, formData);
 }
 
 export function deleteAttachment(inquiryId, attachmentId) {
-  return api.del(`/inquiries/${inquiryId}/attachments/${attachmentId}`);
-} 
+  return api.del(`/inquiries/${inquiryId}/attachments/${attachmentId}/`);
+}

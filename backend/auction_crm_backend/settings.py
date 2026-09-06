@@ -119,3 +119,6 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "crm.exceptions.api_exception_handler",
 }
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'

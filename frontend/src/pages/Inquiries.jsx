@@ -135,7 +135,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
 
   function openNew() {
     setEditing(null);
-    setDraft({ ...emptyInquiry, operator: operatorOptions[0] || "", dateTime: new Date().toISOString().slice(0, 16) });
+    setDraft({ ...emptyInquiry, dateTime: new Date().toISOString().slice(0, 16) });
     setSaveError("");
     setModalOpen(true);
   }
@@ -152,9 +152,9 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     if (["Resolved", "Closed"].includes(record.status) && !record.resolvedDate) {
       record.resolvedDate = todayISO();
     }
-    // DRF DateFields reject "" — convert empty date strings to null
-    if (!record.followUpDate) record.followUpDate = null;
-    if (!record.resolvedDate) record.resolvedDate = null;
+    // Backend expects "" for "no date" (CharField, not DateField) — do NOT send null.
+    if (!record.followUpDate) record.followUpDate = "";
+    if (!record.resolvedDate) record.resolvedDate = "";
 
     setSaving(true);
     setSaveError("");
@@ -287,7 +287,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-4 items-center">
+      <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] p-3.5 flex flex-wrap gap-2 items-center mb-4">
         <input className="w-[220px] font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" placeholder="Search name, phone, company, ID…" value={query} onChange={(e) => setQuery(e.target.value)} />
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
           <option value="All">All categories</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}
@@ -386,9 +386,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           <Field label="Priority">
             <select className={inputCls} value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</select>
           </Field>
-          <Field label="Assigned operator">
-            <select className={inputCls} value={draft.operator} onChange={(e) => setDraft({ ...draft, operator: e.target.value })}>{operatorOptions.map((o) => <option key={o}>{o}</option>)}</select>
-          </Field>
           <Field label="Date & time"><input type="datetime-local" className={inputCls} value={draft.dateTime} onChange={(e) => setDraft({ ...draft, dateTime: e.target.value })} /></Field>
           <Field label="Status">
             <select className={inputCls} value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
@@ -406,8 +403,14 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {draft.attachments.map((a, idx) => (
             <div className="flex items-center gap-2 text-[13px] px-2.5 py-2 rounded-[5px] bg-[color:var(--paper)]" key={a.id || idx}>
-              {a.fileName || a}
-              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] px-2.5 py-[5px] text-xs bg-transparent" style={{ marginLeft: "auto" }} onClick={() => removeAttachment(a)}>Remove</button>
+              {a.url ? (
+                <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--brass-dark)", textDecoration: "underline" }}>
+                  {a.fileName || a}
+                </a>
+              ) : (
+                <span>{a.fileName || a}</span>
+              )}
+              <button className="..." style={{ marginLeft: "auto" }} onClick={() => removeAttachment(a)}>Remove</button>
             </div>
           ))}
         </div>

@@ -21,13 +21,8 @@ from .models import (
 # =============================================================================
 
 class RoleCreateSerializer(serializers.Serializer):
-    """
-    POST /roles — API_SPEC.md §8.
-    Request: { name: string }
-    Response (built in the view, not here): { key: string, name: string }
-    New roles always start with zero default privileges per the spec.
-    """
     name = serializers.CharField(max_length=100)
+    defaultPrivileges = serializers.ListField(child=serializers.CharField(), required=False, default=list)
 
     def validate_name(self, value):
         value = value.strip()
@@ -39,6 +34,7 @@ class RoleCreateSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         name = validated_data['name']
+        privileges = validated_data.get('defaultPrivileges', [])
         base_key = slugify(name).replace('-', '_') or 'role'
         key = base_key
         suffix = 2
@@ -50,9 +46,13 @@ class RoleCreateSerializer(serializers.Serializer):
             key=key,
             name=name,
             isBuiltIn=False,
-            defaultPrivileges=[],
+            defaultPrivileges=privileges,
         )
-
+        
+class RoleReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = ['key', 'name', 'isBuiltIn', 'defaultPrivileges']
 
 # =============================================================================
 # Employees
@@ -114,21 +114,38 @@ class EmployeeCreateSerializer(serializers.Serializer):
         )
 
 
+class InquiryAttachmentSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InquiryAttachment
+        fields = ['id', 'fileName', 'url', 'uploadedAt']
+
+    def get_url(self, obj):
+        request = self.context.get('request')
+        if request and obj.file:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url if obj.file else None
+
+
 class InquirySerializer(serializers.ModelSerializer):
     """
-    Maps API_SPEC.md §2 field names onto the model:
     - `id` <-> Inquiry.publicId
-    - `operator` <-> Employee.name (spec models this as a plain string;
-      we store a real FK so it can't drift from a real account — this
-      serializer resolves the name <-> FK in both directions).
-    - followUpDate / resolvedDate: spec wants "" for "none", not null —
-      DateField doesn't support that, so these are hand-rolled as
+    - `operator` is READ-ONLY — always derived from Inquiry.operator FK
+      and never accepted from the client. It's set server-side from
+      request.user's linked Employee at creation time (see
+      InquiryListCreateView.post below). This is what fixes the
+      "Incorrect type. Expected pk value, received str." error — the
+      client used to send the operator's display name as a string into
+      a field DRF treated as a foreign-key pk.
+    - followUpDate / resolvedDate: "" means "none", hand-rolled as
       CharFields and parsed manually.
     """
     id = serializers.CharField(source='publicId', read_only=True)
-    operator = serializers.CharField(required=False, allow_blank=True)
+    operator = serializers.SerializerMethodField()
     followUpDate = serializers.CharField(required=False, allow_blank=True)
     resolvedDate = serializers.CharField(required=False, allow_blank=True)
+    attachments = InquiryAttachmentSerializer(source='attachment_files', many=True, read_only=True)
 
     class Meta:
         model = Inquiry
@@ -139,9 +156,11 @@ class InquirySerializer(serializers.ModelSerializer):
             'attachments',
         ]
 
+    def get_operator(self, obj):
+        return obj.operator.name if obj.operator else ''
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data['operator'] = instance.operator.name if instance.operator else ''
         data['followUpDate'] = instance.followUpDate.isoformat() if instance.followUpDate else ''
         data['resolvedDate'] = instance.resolvedDate.isoformat() if instance.resolvedDate else ''
         return data
@@ -161,62 +180,25 @@ class InquirySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Must be one of: {', '.join(INQUIRY_STATUSES)}")
         return value
 
-    def _resolve_operator(self, name):
-        if not name:
-            return None
-        try:
-            return Employee.objects.get(name=name)
-        except Employee.DoesNotExist:
-            raise serializers.ValidationError({'operator': f'No employee named "{name}" found.'})
-
     def create(self, validated_data):
-        operator_name = validated_data.pop('operator', '')
         follow_up_raw = validated_data.pop('followUpDate', '')
         resolved_raw = validated_data.pop('resolvedDate', '')
-
-        validated_data['operator'] = self._resolve_operator(operator_name)
         validated_data['followUpDate'] = parse_date(follow_up_raw) if follow_up_raw else None
         validated_data['resolvedDate'] = parse_date(resolved_raw) if resolved_raw else None
-
+        # 'operator' arrives here via serializer.save(operator=...) in the view — never from request.data.
         return Inquiry.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
-        if 'operator' in validated_data:
-            instance.operator = self._resolve_operator(validated_data.pop('operator'))
         if 'followUpDate' in validated_data:
             raw = validated_data.pop('followUpDate')
             instance.followUpDate = parse_date(raw) if raw else None
         if 'resolvedDate' in validated_data:
             raw = validated_data.pop('resolvedDate')
             instance.resolvedDate = parse_date(raw) if raw else None
-
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         return instance
-    
-class InquiryAttachmentSerializer(serializers.ModelSerializer):
-    
-    url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = InquiryAttachment
-        fields = ['id', 'fileName', 'url', 'uploadedAt']
-
-    def get_url(self, obj):
-        request = self.context.get('request')
-        if request and obj.file:
-            return request.build_absolute_uri(obj.file.url)
-        return obj.file.url if obj.file else None
-
-
-class InquirySerializer(serializers.ModelSerializer):
-    attachments = InquiryAttachmentSerializer(source='attachment_files', many=True, read_only=True)
-
-    class Meta:
-        model = Inquiry
-        fields = '__all__'   # or your existing explicit field list — just make sure 'attachments' is included
-
 # =============================================================================
 # Followups  (§3)
 # =============================================================================

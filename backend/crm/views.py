@@ -7,13 +7,15 @@ from rest_framework.authtoken.models import Token
 from .permissions import has_any_role
 from .models import (
     Employee, Inquiry, PERMISSIONS, Role, Followup, VisitSetup,
-    Appointment, Complaint, Escalation, AuditLog,
+    Appointment, Complaint, Escalation, AuditLog,InquiryAttachment,
 )
 from .serializers import (
     EmployeeCreateSerializer,
     EmployeeSerializer,
     InquirySerializer,
+    InquiryAttachmentSerializer,
     RoleCreateSerializer,
+    RoleReadSerializer,
     FollowupSerializer,
     VisitSetupSerializer,
     AppointmentSerializer,
@@ -23,9 +25,11 @@ from .serializers import (
     LoginSerializer,
     AuditLogSerializer,
     GoogleLoginSerializer,
+    
 )
 from django.contrib.auth.models import User
 from rest_framework.parsers import MultiPartParser
+from django.shortcuts import get_object_or_404
 # =============================================================================
 # Shared helpers
 # =============================================================================
@@ -133,26 +137,53 @@ class LogoutView(APIView):
 # =============================================================================
 
 class RoleListCreateView(APIView):
-    """
-    GET  /api/roles/  -> array of role KEY strings — open to any
-                          authenticated user (needed for dropdowns, etc.)
-    POST /api/roles/  -> administrator only (spec §8).
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if request.query_params.get('full'):
+            roles = Role.objects.order_by('name')
+            return Response(RoleReadSerializer(roles, many=True).data)
         keys = list(Role.objects.order_by('name').values_list('key', flat=True))
         return Response(keys)
 
     def post(self, request):
         if not has_any_role('administrator')().has_permission(request, self):
             return Response({'message': 'Only an Administrator can create roles.'}, status=http_status.HTTP_403_FORBIDDEN)
-
         serializer = RoleCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         role = serializer.save()
         log_audit(request, 'Add role', '—', role.name, 'New role created — assign privileges from Employees')
         return Response({'key': role.key, 'name': role.name}, status=http_status.HTTP_201_CREATED)
+
+
+class RoleDeleteView(APIView):
+    """
+    DELETE /api/roles/<key>/ — administrator only. Refuses built-in roles,
+    and refuses if any employee currently holds this role — reassignment
+    is a deliberate separate action, never a silent side effect of delete.
+    """
+    permission_classes = [IsAuthenticated, has_any_role('administrator')]
+
+    def delete(self, request, role_key):
+        try:
+            role = Role.objects.get(key=role_key)
+        except Role.DoesNotExist:
+            return Response({'message': 'Role not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        if role.isBuiltIn:
+            return Response({'message': 'Built-in roles cannot be deleted.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        in_use = Employee.objects.filter(role=role).count()
+        if in_use:
+            return Response(
+                {'message': f'{in_use} employee(s) still use this role. Reassign them to a different role first.'},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        role_name = role.name
+        role.delete()
+        log_audit(request, 'Delete role', role_name, '—', 'Role removed — no employees were assigned')
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
 # =============================================================================
@@ -298,21 +329,17 @@ class InquiryListCreateView(APIView):
                 Q(company__icontains=q) | Q(publicId__icontains=q)
             )
 
-        return Response(InquirySerializer(qs, many=True).data)
+        return Response(InquirySerializer(qs, many=True, context={'request': request}).data)
 
     def post(self, request):
         serializer = InquirySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        inquiry = serializer.save()
+        operator = _employee_for(request.user)   # already defined near the top of views.py
+        inquiry = serializer.save(operator=operator)
         log_audit(request, 'Log inquiry', '—', f'{inquiry.publicId} created', f'{inquiry.category} from {inquiry.callerName}')
-        return Response(InquirySerializer(inquiry).data, status=http_status.HTTP_201_CREATED)
-
+        return Response(InquirySerializer(inquiry, context={'request': request}).data, status=http_status.HTTP_201_CREATED)
 
 class InquiryDetailView(APIView):
-    """
-    GET   /api/inquiries/<id>/
-    PATCH /api/inquiries/<id>/
-    """
     permission_classes = [IsAuthenticated]
 
     def get_object(self, inquiry_id):
@@ -325,7 +352,7 @@ class InquiryDetailView(APIView):
         inquiry = self.get_object(inquiry_id)
         if inquiry is None:
             return Response({'message': 'Inquiry not found.'}, status=http_status.HTTP_404_NOT_FOUND)
-        return Response(InquirySerializer(inquiry).data)
+        return Response(InquirySerializer(inquiry, context={'request': request}).data)
 
     def patch(self, request, inquiry_id):
         inquiry = self.get_object(inquiry_id)
@@ -333,7 +360,7 @@ class InquiryDetailView(APIView):
             return Response({'message': 'Inquiry not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
         prev_status = inquiry.status
-        serializer = InquirySerializer(inquiry, data=request.data, partial=True)
+        serializer = InquirySerializer(inquiry, data=request.data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
         updated = serializer.save()
 
@@ -342,7 +369,8 @@ class InquiryDetailView(APIView):
         else:
             log_audit(request, 'Edit inquiry', '—', updated.publicId, f'Details updated for {updated.callerName}')
 
-        return Response(InquirySerializer(updated).data)
+        return Response(InquirySerializer(updated, context={'request': request}).data)
+
     def delete(self, request, inquiry_id):
         if not has_any_role('administrator')().has_permission(request, self):
             return Response({'message': 'Only an Administrator can delete inquiries.'}, status=http_status.HTTP_403_FORBIDDEN)
@@ -367,7 +395,7 @@ class InquiryAttachmentView(APIView):
         att = InquiryAttachment.objects.create(
             inquiry=inquiry, file=f, fileName=f.name, fileSize=f.size, uploadedBy=request.user
         )
-        return Response({'id': att.id, 'fileName': att.fileName, 'url': att.file.url, 'uploadedAt': att.uploadedAt})
+        return Response(InquiryAttachmentSerializer(att, context={'request': request}).data)
 
     def delete(self, request, inquiry_id, attachment_id):
         att = get_object_or_404(InquiryAttachment, id=attachment_id, inquiry__publicId=inquiry_id)

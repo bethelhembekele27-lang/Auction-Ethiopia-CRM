@@ -20,9 +20,15 @@ export function listRoles() {
   return api.get("/roles");
 }
 
-export function createRole(name) {
-  return api.post("/roles", { name });
+export function createRole(name, defaultPrivileges = []) {
+  return api.post("/roles", { name, defaultPrivileges });
 }
 export function deleteEmployee(id) {
   return api.del(`/employees/${id}`);
+}
+export function listRolesFull() {
+  return api.get("/roles", { full: 1 });
+}
+export function deleteRole(key) {
+  return api.del(`/roles/${key}/`);
 }

@@ -1,0 +1,3 @@
+Type,ID,Name,Phone,Company,Auction,Category,Priority,Date,Status
+"Visitation","APT-0001","test vistor","0998","TEST","","—","—","30 Aug 2026","Cancelled"
+"Complaint","CMP-0001","TEST CALLER","9898","—","—","Service Quality","High","30 Aug 2026","Resolved"

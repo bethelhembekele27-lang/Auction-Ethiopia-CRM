@@ -22,6 +22,7 @@ from .views import (
     AuditLogListView,
     AuditLogClearView,
     GoogleLoginView,
+    RoleDeleteView,
 )
 
 urlpatterns = [
@@ -57,4 +58,6 @@ urlpatterns = [
     # urls.py
     path('inquiries/<str:inquiry_id>/attachments/', InquiryAttachmentView.as_view()),
     path('inquiries/<str:inquiry_id>/attachments/<int:attachment_id>/', InquiryAttachmentView.as_view()),
+    
+    path('roles/<str:role_key>/', RoleDeleteView.as_view(), name='role-delete'),
 ]

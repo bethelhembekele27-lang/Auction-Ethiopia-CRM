@@ -145,7 +145,7 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-4 items-center">
+      <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] p-3.5 flex flex-wrap gap-2 items-center mb-4">
         <input className="w-[220px] font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" placeholder="Search company, batch, guide…" value={query} onChange={(e) => setQuery(e.target.value)} />
         {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)] btn-icon-label" style={{ marginLeft: "auto" }} onClick={openNew}>
           <PlusIcon /><span>New visit setup</span>
