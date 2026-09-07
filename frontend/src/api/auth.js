@@ -20,7 +20,14 @@ export function logout() {
   return api.post("/auth/logout");
 }
 
-// PATCH /api/auth/me — Account Settings modal (username and/or password)
-export function updateMe({ username, password }) {
-  return api.patch("/auth/me", { username, password });
+// PATCH /api/account/username/ — Account Settings modal, display name only.
+export function updateUsername(username) {
+  return api.patch("/account/username/", { username });
+}
+
+// PATCH /api/account/change-password/ — Account Settings modal, requires
+// the current password so a left-open session can't lock the real owner
+// out just by holding a valid token.
+export function changePassword(oldPassword, newPassword) {
+  return api.patch("/account/change-password/", { oldPassword, newPassword });
 }

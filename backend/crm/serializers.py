@@ -330,6 +330,85 @@ class VisitSetupSerializer(serializers.ModelSerializer):
 
 
 # =============================================================================
+# Account self-service  (password change + username edit for the CURRENT
+# user — distinct from EmployeeDetailView, which is administrator-only
+# and edits OTHER employees' records)
+# =============================================================================
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """
+    PATCH /api/account/change-password/ — { oldPassword, newPassword }.
+    Requires the current password so a hijacked/left-open session can't
+    be used to lock the real owner out by silently swapping the password
+    with nothing but a valid token.
+    """
+    oldPassword = serializers.CharField(write_only=True)
+    newPassword = serializers.CharField(write_only=True, min_length=6)
+
+    def validate(self, data):
+        user = self.context['request'].user
+        if not user.check_password(data['oldPassword']):
+            raise serializers.ValidationError({'oldPassword': 'Current password is incorrect.'})
+        return data
+
+    def save(self, **kwargs):
+        user = self.context['request'].user
+        user.set_password(self.validated_data['newPassword'])
+        user.save(update_fields=['password'])
+        try:
+            employee = user.employee
+            employee.lastPasswordChange = timezone.now()
+            employee.save(update_fields=['lastPasswordChange'])
+        except Employee.DoesNotExist:
+            pass
+        return user
+
+
+class UpdateUsernameSerializer(serializers.Serializer):
+    """PATCH /api/account/username/ — { username } for the CURRENT user."""
+    username = serializers.CharField(max_length=150)
+
+    def validate_username(self, value):
+        value = value.strip().lower()
+        if not value:
+            raise serializers.ValidationError("Username is required.")
+        user = self.context['request'].user
+        if User.objects.filter(username__iexact=value).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError("That username is already taken.")
+        return value
+
+    def save(self, **kwargs):
+        user = self.context['request'].user
+        user.username = self.validated_data['username']
+        user.save(update_fields=['username'])
+        try:
+            employee = user.employee
+            employee.lastUsernameChange = timezone.now()
+            employee.save(update_fields=['lastUsernameChange'])
+        except Employee.DoesNotExist:
+            pass
+        return user
+
+
+class AdminResetPasswordSerializer(serializers.Serializer):
+    """
+    POST /api/employees/<id>/reset-password/ — administrator only,
+    { newPassword }. No old-password check by design: this is the
+    "I forgot it" / "the employee is locked out" recovery path an admin
+    uses on someone else's account, so there is no old password to check.
+    """
+    newPassword = serializers.CharField(write_only=True, min_length=6)
+
+    def save(self, **kwargs):
+        employee = self.context['employee']
+        employee.user.set_password(self.validated_data['newPassword'])
+        employee.user.save(update_fields=['password'])
+        employee.lastPasswordChange = timezone.now()
+        employee.save(update_fields=['lastPasswordChange'])
+        return employee
+
+
+# =============================================================================
 # Auth  (§1)
 # =============================================================================
 

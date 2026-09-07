@@ -5,6 +5,7 @@ from .views import (
     EmployeeDetailView,
     EmployeeListCreateView,
     EmployeePrivilegesView,
+    EmployeeResetPasswordView,
     InquiryDetailView,
     InquiryListCreateView,
     InquiryAttachmentView,
@@ -23,6 +24,8 @@ from .views import (
     AuditLogClearView,
     GoogleLoginView,
     RoleDeleteView,
+    ChangePasswordView,
+    UpdateUsernameView,
 )
 
 urlpatterns = [
@@ -30,10 +33,14 @@ urlpatterns = [
     path('auth/logout', LogoutView.as_view(), name='auth-logout'),
     path('auth/google', GoogleLoginView.as_view(), name='auth-google'),
 
+    path('account/change-password/', ChangePasswordView.as_view(), name='account-change-password'),
+    path('account/username/', UpdateUsernameView.as_view(), name='account-update-username'),
+
     path('roles', RoleListCreateView.as_view(), name='role-list-create'),
     path('employees', EmployeeListCreateView.as_view(), name='employee-list-create'),
     path('employees/<str:employee_id>', EmployeeDetailView.as_view(), name='employee-detail'),
     path('employees/<str:employee_id>/privileges', EmployeePrivilegesView.as_view(), name='employee-privileges'),
+    path('employees/<str:employee_id>/reset-password/', EmployeeResetPasswordView.as_view(), name='employee-reset-password'),
 
     path('inquiries', InquiryListCreateView.as_view(), name='inquiry-list-create'),
     path('inquiries/<str:inquiry_id>', InquiryDetailView.as_view(), name='inquiry-detail'),

@@ -27,9 +27,34 @@ import * as api from "../api";
 // page logic lives in pages/, all shared UI in components/. Every entity
 // list starts empty and is populated from the backend once a session
 // exists — no hardcoded/seed data anywhere in the frontend.
+// Reads back the {username, role, operatorName} saved alongside the auth
+// token at login (see Login.jsx). Checked on mount so a page refresh (or
+// browser restart, if "Remember me" was checked) doesn't force a fresh
+// login every time just because in-memory React state was reset — the
+// token was already surviving in storage, the session state just never
+// looked for it. Deliberately synchronous/local-only: it does NOT confirm
+// the token is still valid against the server. If it's stale (expired,
+// revoked, deleted employee), the first real API call in loadAllData will
+// 401, and client.js's 401 handler clears storage and fires "auth:expired"
+// (listened for below) to drop back to Login cleanly.
+function loadStoredSession() {
+  try {
+    const raw = localStorage.getItem("auth_user") || sessionStorage.getItem("auth_user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.username || !parsed.role) return null;
+    return { role: parsed.role, username: parsed.username, operatorName: parsed.operatorName || null };
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
-  const [page, setPage] = useState("dashboard");
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(loadStoredSession);
+  const [page, setPage] = useState(() => {
+    const restored = loadStoredSession();
+    return restored ? defaultPageForRole(restored.role) : "dashboard";
+  });
   const [theme, setTheme] = useState(() => localStorage.getItem("crm_theme") || "light");
   useEffect(() => {
     localStorage.setItem("crm_theme", theme);
@@ -134,6 +159,22 @@ export default function App() {
     if (session) loadAllData();
   }, [session, loadAllData]);
 
+  // Fired by api/client.js whenever any request comes back 401 — covers
+  // both a truly expired/invalid token AND the stale-restored-session
+  // case above (optimistically restored on mount, then rejected by the
+  // server on the first real call). Storage is already cleared by the
+  // time this fires; this just resets the in-memory session so the UI
+  // actually falls back to the Login screen instead of hanging on a
+  // "logged in" shell with no data.
+  useEffect(() => {
+    function handleExpired() {
+      setSession(null);
+      setPage("dashboard");
+    }
+    window.addEventListener("auth:expired", handleExpired);
+    return () => window.removeEventListener("auth:expired", handleExpired);
+  }, []);
+
   function handleLogin(role, username, operatorName) {
     setSession({ role, username, operatorName: operatorName || null });
     // 2.10: land on a page this role can actually see — previously every
@@ -145,11 +186,22 @@ export default function App() {
     try { await api.auth.logout(); } catch { /* ignore network errors on logout */ }
     localStorage.removeItem("auth_token");
     sessionStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user");
+    sessionStorage.removeItem("auth_user");
     setSession(null);
     setPage("dashboard");
   }
   function handleSaveProfile(newUsername) {
-    setSession((s) => ({ ...s, username: newUsername }));
+    setSession((s) => {
+      const updated = { ...s, username: newUsername };
+      // Keep whichever storage is holding this session's auth_user in
+      // sync too — otherwise a refresh right after renaming would
+      // silently restore the OLD username from storage and look like
+      // the rename didn't take, even though the backend has it right.
+      const storage = localStorage.getItem("auth_user") ? localStorage : sessionStorage.getItem("auth_user") ? sessionStorage : null;
+      if (storage) storage.setItem("auth_user", JSON.stringify(updated));
+      return updated;
+    });
   }
 
   const { popupItems, bellItems, popAway, clearFromBell } = useNotifications(

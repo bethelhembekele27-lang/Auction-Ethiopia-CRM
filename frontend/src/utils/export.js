@@ -10,7 +10,16 @@ export function rowsToCSV(rows) {
   return [headers.join(","), ...rows.map((r) => headers.map((h) => esc(r[h])).join(","))].join("\n");
 }
 export function downloadFile(filename, content, mime) {
-  const blob = new Blob([content], { type: mime });
+  // Excel ignores the "charset=utf-8" in the mime type and defaults to
+  // reading unmarked CSVs as Windows-1252 — so any multi-byte UTF-8
+  // character (the em-dash "—" placeholders this app uses for blank
+  // Category/Priority/Auction cells being the main one) comes out
+  // mangled as "â€"". A UTF-8 byte-order-mark at the very start of the
+  // file is the standard way to make Excel specifically (Numbers/Google
+  // Sheets already read UTF-8 correctly either way) detect and decode
+  // it properly instead of guessing.
+  const withBOM = mime.includes("csv") ? "\uFEFF" + content : content;
+  const blob = new Blob([withBOM], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = filename;

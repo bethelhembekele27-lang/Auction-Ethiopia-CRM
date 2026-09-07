@@ -24,6 +24,11 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   const [saveError, setSaveError] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [rolesFull, setRolesFull] = useState([]);
+  const [resetPwTarget, setResetPwTarget] = useState(null);
+  const [resetPwValue, setResetPwValue] = useState("");
+  const [resetPwConfirm, setResetPwConfirm] = useState("");
+  const [resetPwError, setResetPwError] = useState("");
+  const [resetPwSaving, setResetPwSaving] = useState(false);
   const sel = useRowSelection((e) => e.id);
 
   const { pending, confirm, cancel, run } = useConfirm();
@@ -90,6 +95,32 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   function openPrivSelected() {
     const rows = sel.selectedFrom(employees);
     if (rows.length === 1) openPriv(rows[0]);
+  }
+  function openResetPassword(emp) {
+    setResetPwTarget(emp);
+    setResetPwValue("");
+    setResetPwConfirm("");
+    setResetPwError("");
+  }
+  function openResetPasswordSelected() {
+    const rows = sel.selectedFrom(employees);
+    if (rows.length === 1) openResetPassword(rows[0]);
+  }
+  async function saveResetPassword() {
+    if (!resetPwValue || resetPwValue.length < 6) { setResetPwError("Password must be at least 6 characters."); return; }
+    if (resetPwValue !== resetPwConfirm) { setResetPwError("Passwords don't match."); return; }
+    setResetPwSaving(true);
+    setResetPwError("");
+    try {
+      await employeesApi.resetEmployeePassword(resetPwTarget.id, resetPwValue);
+      addAudit("Reset employee password", "—", "—", resetPwTarget.username);
+      setResetPwTarget(null);
+      sel.clear();
+    } catch (err) {
+      setResetPwError(err.body?.message || "Couldn't reset password — try again.");
+    } finally {
+      setResetPwSaving(false);
+    }
   }
   function togglePriv(p) { setPrivDraft((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])); }
   function toggleNewRolePriv(p) {
@@ -164,6 +195,9 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
       <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
         <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openPrivSelected}>
           <EditIcon /><span>Edit privileges</span>
+        </button>
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openResetPasswordSelected} title="Set a new password for this employee — no old password needed">
+          Reset password
         </button>
         <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Active")}>
           <CheckIcon /><span>Activate</span>
@@ -310,6 +344,29 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
             <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
               <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={saving} onClick={savePriv}>{saving ? "Saving…" : "Save privileges"}</button>
               <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setPrivModalOpen(false)}>Cancel</button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal open={!!resetPwTarget} onClose={() => setResetPwTarget(null)} title={resetPwTarget ? `Reset password — ${resetPwTarget.username}` : "Reset password"}>
+        {resetPwTarget && (
+          <>
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 14 }}>
+              This sets a brand-new password directly — the employee's old password won't be needed. Share the new password with them securely.
+            </div>
+            <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
+              <Field label="New password" full>
+                <input type="password" className={inputCls} value={resetPwValue} onChange={(e) => setResetPwValue(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+              </Field>
+              <Field label="Confirm new password" full>
+                <input type="password" className={inputCls} value={resetPwConfirm} onChange={(e) => setResetPwConfirm(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+              </Field>
+            </div>
+            {resetPwError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>{resetPwError}</div>}
+            <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
+              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={resetPwSaving} onClick={saveResetPassword}>{resetPwSaving ? "Saving…" : "Reset password"}</button>
+              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setResetPwTarget(null)}>Cancel</button>
             </div>
           </>
         )}

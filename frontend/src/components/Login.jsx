@@ -75,6 +75,7 @@ export default function Login({ onLogin }) {
     try {
       const { token, user } = await auth.loginWithGoogle(response.credential);
       sessionStorage.setItem("auth_token", token);
+      sessionStorage.setItem("auth_user", JSON.stringify({ username: user.username, role: user.role, operatorName: user.operatorName || null }));
       onLogin(user.role, user.username, user.operatorName || null);
     } catch (err) {
       setError(err.body?.message || "Google sign-in failed — this account may not be linked to an employee record.");
@@ -89,8 +90,19 @@ export default function Login({ onLogin }) {
     setError("");
     try {
       const { token, user } = await auth.login(username.trim().toLowerCase(), password);
-      if (remember) localStorage.setItem("auth_token", token);
-      else sessionStorage.setItem("auth_token", token);
+      const userInfo = JSON.stringify({ username: user.username, role: user.role, operatorName: user.operatorName || null });
+      // "Remember me" controls which storage survives closing the browser
+      // entirely (localStorage) vs. just the tab (sessionStorage) — but
+      // either way the token AND the user info it maps to must be saved
+      // together, or a page refresh has no way to know who's logged in
+      // even though the token is still sitting there.
+      if (remember) {
+        localStorage.setItem("auth_token", token);
+        localStorage.setItem("auth_user", userInfo);
+      } else {
+        sessionStorage.setItem("auth_token", token);
+        sessionStorage.setItem("auth_user", userInfo);
+      }
       onLogin(user.role, user.username, user.operatorName || null);
     } catch (err) {
       setError(err.body?.message || "Incorrect username or password.");

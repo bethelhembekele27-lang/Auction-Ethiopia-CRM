@@ -25,7 +25,9 @@ from .serializers import (
     LoginSerializer,
     AuditLogSerializer,
     GoogleLoginSerializer,
-    
+    ChangePasswordSerializer,
+    UpdateUsernameSerializer,
+    AdminResetPasswordSerializer,
 )
 from django.contrib.auth.models import User
 from rest_framework.parsers import MultiPartParser
@@ -133,6 +135,58 @@ class LogoutView(APIView):
 
 
 # =============================================================================
+# Account self-service  (§ new — replaces the old nonexistent PATCH /auth/me
+# the frontend was calling, which 404'd since no such route ever existed)
+# =============================================================================
+
+class ChangePasswordView(APIView):
+    """PATCH /api/account/change-password/ — { oldPassword, newPassword }."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_audit(request, 'Change own password', '—', '—', request.user.username)
+        return Response({'message': 'Password updated.'})
+
+
+class UpdateUsernameView(APIView):
+    """PATCH /api/account/username/ — { username } for the current user."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        prev_username = request.user.username
+        serializer = UpdateUsernameSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        log_audit(request, 'Change own username', prev_username, user.username, '—')
+        return Response({'username': user.username})
+
+
+class EmployeeResetPasswordView(APIView):
+    """
+    POST /api/employees/<id>/reset-password/ — administrator only,
+    { newPassword }. For an admin resetting someone ELSE's password
+    (lockout recovery) — no old password required, unlike self-service
+    change-password above.
+    """
+    permission_classes = [IsAuthenticated, has_any_role('administrator')]
+
+    def post(self, request, employee_id):
+        try:
+            employee = Employee.objects.select_related('user').get(publicId=employee_id)
+        except Employee.DoesNotExist:
+            return Response({'message': 'Employee not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        serializer = AdminResetPasswordSerializer(data=request.data, context={'employee': employee})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_audit(request, 'Reset employee password', '—', '—', employee.user.username)
+        return Response({'message': f"Password reset for {employee.user.username}."})
+
+
+# =============================================================================
 # Roles
 # =============================================================================
 
@@ -215,9 +269,25 @@ class EmployeeListCreateView(APIView):
         return Response(EmployeeSerializer(employee).data, status=http_status.HTTP_201_CREATED)
 
 class EmployeeDetailView(APIView):
+    """
+    SECURITY: patch() previously had no role check at all beyond
+    IsAuthenticated — meaning ANY logged-in employee (any role, including
+    a plain call_operator) could PATCH ANY OTHER employee's record by
+    publicId and flip their status to Inactive, overwrite their name, or
+    change their email — up to and including deactivating/renaming an
+    administrator account. delete() already correctly checked for
+    'administrator' inline; patch() did not. This endpoint is only ever
+    called from the administrator-only Employees.jsx page in the current
+    frontend, so requiring 'administrator' here does not break any
+    legitimate flow — self-service profile edits go through a different
+    endpoint (see AccountSettingsModal / the account/change-password and
+    account/update endpoints), never this one.
+    """
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, employee_id):
+        if not has_any_role('administrator')().has_permission(request, self):
+            return Response({'message': 'Only an Administrator can edit other employees.'}, status=http_status.HTTP_403_FORBIDDEN)
         try:
             employee = Employee.objects.select_related('user').get(publicId=employee_id)
         except Employee.DoesNotExist:

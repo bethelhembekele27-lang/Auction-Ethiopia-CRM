@@ -32,3 +32,9 @@ export function listRolesFull() {
 export function deleteRole(key) {
   return api.del(`/roles/${key}/`);
 }
+// POST /api/employees/<id>/reset-password/ — administrator only. Unlike
+// self-service change-password (api/auth.js), this needs no old password
+// since it's the admin-recovers-a-locked-out-employee path.
+export function resetEmployeePassword(id, newPassword) {
+  return api.post(`/employees/${id}/reset-password/`, { newPassword });
+}
