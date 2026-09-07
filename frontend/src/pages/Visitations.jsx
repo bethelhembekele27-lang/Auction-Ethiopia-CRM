@@ -8,6 +8,7 @@ import { isSetupOpen } from "./VisitSetups";
 import { appointments as appointmentsApi, followups as followupsApi } from "../api";
 import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
 import { useConfirm } from "../hooks/useConfirm";
+import AutoCompleteField from "../components/AutoCompleteField";
 import ConfirmDialog from "../components/ConfirmDialog";
 
 export const emptyAppt = {
@@ -74,6 +75,11 @@ export default function Visitations({ appointments, setAppointments, visitSetups
 
   const auctionOptions = useMemo(
     () => [...new Set(appointments.map((a) => a.auction).filter(Boolean))].sort(),
+    [appointments]
+  );
+  // 3d: repeat visitors — offer their phone from history.
+  const phoneOptions = useMemo(
+    () => [...new Set(appointments.map((a) => a.phone).filter(Boolean))].sort(),
     [appointments]
   );
 
@@ -246,7 +252,9 @@ export default function Visitations({ appointments, setAppointments, visitSetups
             </div>
           )}
           <Field label="Visitor name"><input className={inputCls} value={draft.visitorName} onChange={(e) => setDraft({ ...draft, visitorName: e.target.value })} /></Field>
-          <Field label="Phone number"><input className={inputCls} value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></Field>
+          <Field label="Phone number">
+            <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past visitor or type a new number" />
+          </Field>
           <Field label="Visit date"><input type="date" className={inputCls} value={draft.visitDate} onChange={(e) => setDraft({ ...draft, visitDate: e.target.value })} /></Field>
           <Field label="Visit time"><input type="time" className={inputCls} value={draft.visitTime} onChange={(e) => setDraft({ ...draft, visitTime: e.target.value })} /></Field>
           {editing && (

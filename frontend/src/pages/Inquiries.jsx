@@ -67,6 +67,15 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     () => [...new Set(inquiries.map((i) => i.batch).filter(Boolean))].sort(),
     [inquiries]
   );
+  // 3d: company + phone repeat across callers, so offer history here too.
+  const companyOptions = useMemo(
+    () => [...new Set(inquiries.map((i) => i.company).filter(Boolean))].sort(),
+    [inquiries]
+  );
+  const phoneOptions = useMemo(
+    () => [...new Set(inquiries.map((i) => i.phone).filter(Boolean))].sort(),
+    [inquiries]
+  );
   const selectedSetup = apptDraft ? (visitSetups || []).find((v) => v.id === apptDraft.setupId) : null;
 
   const filtered = useMemo(() => {
@@ -362,8 +371,12 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "New inquiry"} wide>
         <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
           <Field label="Caller name"><input className={inputCls} value={draft.callerName} onChange={(e) => setDraft({ ...draft, callerName: e.target.value })} /></Field>
-          <Field label="Phone number"><input className={inputCls} value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></Field>
-          <Field label="Company (optional)"><input className={inputCls} value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} /></Field>
+          <Field label="Phone number">
+            <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
+          </Field>
+          <Field label="Company (optional)">
+            <AutoCompleteField value={draft.company} onChange={(v) => setDraft({ ...draft, company: v })} options={companyOptions} placeholder="Choose a past company or type a new one" />
+          </Field>
           <Field label="Related auction (optional)">
             <AutoCompleteField
               value={draft.auction}
@@ -451,7 +464,9 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
                 </div>
               )}
               <Field label="Visitor name"><input className={inputCls} value={apptDraft.visitorName} onChange={(e) => setApptDraft({ ...apptDraft, visitorName: e.target.value })} /></Field>
-              <Field label="Phone number"><input className={inputCls} value={apptDraft.phone} onChange={(e) => setApptDraft({ ...apptDraft, phone: e.target.value })} /></Field>
+              <Field label="Phone number">
+                <AutoCompleteField value={apptDraft.phone} onChange={(v) => setApptDraft({ ...apptDraft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
+              </Field>
               <Field label="Visit date"><input type="date" className={inputCls} value={apptDraft.visitDate} onChange={(e) => setApptDraft({ ...apptDraft, visitDate: e.target.value })} /></Field>
               <Field label="Visit time"><input type="time" className={inputCls} value={apptDraft.visitTime} onChange={(e) => setApptDraft({ ...apptDraft, visitTime: e.target.value })} /></Field>
               <Field label="Notes" full><textarea className={inputCls} rows={2} value={apptDraft.notes} onChange={(e) => setApptDraft({ ...apptDraft, notes: e.target.value })} /></Field>
@@ -472,7 +487,9 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
             <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
               <Field label="Related inquiry ID (optional)"><input className={inputCls} value={cmpDraft.inquiryId} onChange={(e) => setCmpDraft({ ...cmpDraft, inquiryId: e.target.value })} /></Field>
               <Field label="Caller name"><input className={inputCls} value={cmpDraft.callerName} onChange={(e) => setCmpDraft({ ...cmpDraft, callerName: e.target.value })} /></Field>
-              <Field label="Phone number"><input className={inputCls} value={cmpDraft.phone} onChange={(e) => setCmpDraft({ ...cmpDraft, phone: e.target.value })} /></Field>
+              <Field label="Phone number">
+                <AutoCompleteField value={cmpDraft.phone} onChange={(v) => setCmpDraft({ ...cmpDraft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
+              </Field>
               <Field label="Category"><select className={inputCls} value={cmpDraft.category} onChange={(e) => setCmpDraft({ ...cmpDraft, category: e.target.value })}>{COMPLAINT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
               <Field label="Assigned department"><select className={inputCls} value={cmpDraft.department} onChange={(e) => setCmpDraft({ ...cmpDraft, department: e.target.value })}>{DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}</select></Field>
               <Field label="Priority"><select className={inputCls} value={cmpDraft.priority} onChange={(e) => setCmpDraft({ ...cmpDraft, priority: e.target.value })}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</select></Field>

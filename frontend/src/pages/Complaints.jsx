@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITIES, PRIORITY_STAMP } from "../constants/lookups";
 import { todayISO } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
@@ -8,6 +8,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { complaints as complaintsApi } from "../api";
 import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
+import AutoCompleteField from "../components/AutoCompleteField";
 
 export const emptyComplaint = {
   id: "", inquiryId: "", callerName: "", phone: "", category: COMPLAINT_CATEGORIES[0],
@@ -26,6 +27,13 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
 
   const sel = useRowSelection((c) => c.id);
   const { pending, confirm, cancel, run } = useConfirm();
+
+  // 3d: repeat callers — offer their phone from history instead of
+  // retyping it every time a new complaint comes in from them.
+  const phoneOptions = useMemo(
+    () => [...new Set(complaints.map((c) => c.phone).filter(Boolean))].sort(),
+    [complaints]
+  );
 
   async function bulkDelete() {
     const rows = sel.selectedFrom(sorted);
@@ -340,12 +348,11 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
           </Field>
 
           <Field label="Phone number">
-            <input
-              className={inputCls}
+            <AutoCompleteField
               value={draft.phone}
-              onChange={(e) =>
-                setDraft({ ...draft, phone: e.target.value })
-              }
+              onChange={(v) => setDraft({ ...draft, phone: v })}
+              options={phoneOptions}
+              placeholder="Choose a past caller or type a new number"
             />
           </Field>
 

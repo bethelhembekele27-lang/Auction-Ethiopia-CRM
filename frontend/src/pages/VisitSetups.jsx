@@ -7,6 +7,7 @@ import { visitSetups as visitSetupsApi } from "../api";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { EditIcon, DeleteIcon, PlusIcon } from "../components/icons";
+import AutoCompleteField from "../components/AutoCompleteField";
 
 const emptyVisitSetup = {
   id: "", company: "", batch: "", dateFrom: "", dateTo: "", address: "", items: "",
@@ -90,6 +91,13 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
       }
     });
   }
+
+  // 3d: "pick from history or type new" for fields that repeat across
+  // visit setups — derived live from existing records, same pattern as
+  // Inquiries.jsx's auction/batch AutoCompleteField usage.
+  const companyOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.company).filter(Boolean))].sort(), [visitSetups]);
+  const guideNameOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.guideName).filter(Boolean))].sort(), [visitSetups]);
+  const guidePhoneOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.guidePhone).filter(Boolean))].sort(), [visitSetups]);
 
   const filtered = useMemo(() => {
     if (!query) return visitSetups;
@@ -192,12 +200,18 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "New visit setup"} wide>
         <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
-          <Field label="Company"><input className={inputCls} value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} /></Field>
+          <Field label="Company">
+            <AutoCompleteField value={draft.company} onChange={(v) => setDraft({ ...draft, company: v })} options={companyOptions} placeholder="Choose a past company or type a new one" />
+          </Field>
           <Field label="Batch number"><input className={inputCls} value={draft.batch} onChange={(e) => setDraft({ ...draft, batch: e.target.value })} /></Field>
           <Field label="Address"><input className={inputCls} value={draft.address} onChange={(e) => setDraft({ ...draft, address: e.target.value })} /></Field>
           <Field label="Item(s) out for auction" full><textarea className={inputCls} rows={2} value={draft.items} onChange={(e) => setDraft({ ...draft, items: e.target.value })} /></Field>
-          <Field label="Guide name"><input className={inputCls} value={draft.guideName} onChange={(e) => setDraft({ ...draft, guideName: e.target.value })} /></Field>
-          <Field label="Guide phone"><input className={inputCls} value={draft.guidePhone} onChange={(e) => setDraft({ ...draft, guidePhone: e.target.value })} /></Field>
+          <Field label="Guide name">
+            <AutoCompleteField value={draft.guideName} onChange={(v) => setDraft({ ...draft, guideName: v })} options={guideNameOptions} placeholder="Choose a past guide or type a new one" />
+          </Field>
+          <Field label="Guide phone">
+            <AutoCompleteField value={draft.guidePhone} onChange={(v) => setDraft({ ...draft, guidePhone: v })} options={guidePhoneOptions} placeholder="Choose a past number or type a new one" />
+          </Field>
           <Field label="Available from"><input type="time" className={inputCls} value={draft.guideTimeFrom} onChange={(e) => setDraft({ ...draft, guideTimeFrom: e.target.value })} /></Field>
           <Field label="Available until"><input type="time" className={inputCls} value={draft.guideTimeTo} onChange={(e) => setDraft({ ...draft, guideTimeTo: e.target.value })} /></Field>
           <DateRangeField label="Date from" value={draft.dateFrom} mode={dateFromMode} setMode={setDateFromMode} onChange={(v) => setDraft((d) => ({ ...d, dateFrom: v }))} />
