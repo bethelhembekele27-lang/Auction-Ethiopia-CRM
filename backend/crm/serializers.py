@@ -6,7 +6,7 @@ from rest_framework import serializers
 import os
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
-
+from django.db import transaction
 
 from django.contrib.auth import authenticate
 from django.utils.dateparse import parse_date
@@ -79,16 +79,37 @@ class EmployeeCreateSerializer(serializers.Serializer):
     role = serializers.CharField()
     email = serializers.EmailField(required=False, allow_blank=True)
 
+    def validate_name(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError("Employee name is required.")
+
+        if Employee.objects.filter(name__iexact=value).exists():
+            raise serializers.ValidationError(
+                "An employee with that name already exists."
+            )
+
+        return value
+
     def validate_username(self, value):
         value = value.strip().lower()
+
         if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError("That username is already taken.")
+            raise serializers.ValidationError(
+                "That username is already taken."
+            )
+
         return value
 
     def validate_email(self, value):
         value = value.strip().lower()
+
         if value and User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("That email is already in use by another account.")
+            raise serializers.ValidationError(
+                "That email is already in use by another account."
+            )
+
         return value
 
     def validate_role(self, value):
@@ -99,20 +120,27 @@ class EmployeeCreateSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         role = validated_data['role']
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            password=validated_data['password'],
-            email=validated_data.get('email', ''),
-        )
-        return Employee.objects.create(
-            user=user,
-            name=validated_data['name'],
-            role=role,
-            status='Active',
-            privileges=list(role.defaultPrivileges),
-            lastPasswordChange=timezone.now(),
-        )
 
+        # Create both User and Employee as one database transaction.
+        # If Employee creation fails for any reason, the User creation
+        # is rolled back automatically.
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=validated_data['username'],
+                password=validated_data['password'],
+                email=validated_data.get('email', ''),
+            )
+
+            employee = Employee.objects.create(
+                user=user,
+                name=validated_data['name'],
+                role=role,
+                status='Active',
+                privileges=list(role.defaultPrivileges),
+                lastPasswordChange=timezone.now(),
+            )
+
+        return employee
 
 class InquiryAttachmentSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
@@ -349,6 +377,8 @@ class ChangePasswordSerializer(serializers.Serializer):
         user = self.context['request'].user
         if not user.check_password(data['oldPassword']):
             raise serializers.ValidationError({'oldPassword': 'Current password is incorrect.'})
+        if data['oldPassword'] == data['newPassword']:
+            raise serializers.ValidationError({'newPassword': 'New password must be different from your current password.'})
         return data
 
     def save(self, **kwargs):

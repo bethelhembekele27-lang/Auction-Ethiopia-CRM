@@ -57,14 +57,38 @@ PERMISSIONS = [
 
 def next_public_id(model_cls, prefix, pad=4):
     """
-    Generates PREFIX-00NN ids the way API_SPEC.md §13 requires.
-    NOTE: count-based, not gap-safe — fine for a low-concurrency internal
-    tool, but two near-simultaneous creates could theoretically collide.
-    Revisit with a dedicated sequence/counter table if that ever bites us.
-    """
-    count = model_cls.objects.count()
-    return f"{prefix}-{count + 1:0{pad}d}"
+    Generate the next public ID from the highest existing numeric ID.
 
+    Unlike the old count-based approach, this is gap-safe:
+        EMP-0001
+        EMP-0002
+        EMP-0004
+        EMP-0007
+
+    The next ID will be EMP-0008 rather than EMP-0005.
+
+    IDs are zero-padded to the requested width and remain compatible
+    with the existing EMP/INQ/FU/VST/APT/CMP/ESC format.
+    """
+    prefix_filter = f"{prefix}-"
+
+    last_object = (
+        model_cls.objects
+        .filter(publicId__startswith=prefix_filter)
+        .order_by("-publicId")
+        .first()
+    )
+
+    if not last_object or not last_object.publicId:
+        next_number = 1
+    else:
+        try:
+            last_number = int(last_object.publicId.rsplit("-", 1)[1])
+            next_number = last_number + 1
+        except (ValueError, IndexError):
+            next_number = 1
+
+    return f"{prefix}-{next_number:0{pad}d}"
 
 # =============================================================================
 # Roles & Employees  (§8)
