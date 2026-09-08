@@ -937,3 +937,24 @@ class VapidPublicKeyView(APIView):
 
     def get(self, request):
         return Response({'publicKey': os.environ.get('VAPID_PUBLIC_KEY', '')})
+
+
+class TriggerFollowupRemindersView(APIView):
+    """
+    POST /api/internal/send-followup-reminders/ — called once a day by a
+    GitHub Actions scheduled workflow (or any external free cron pinger).
+    Protected by a shared secret header, NOT user auth, since nothing is
+    logged in when this fires. Runs the same logic as the management
+    command, just triggerable over HTTP since Render's free tier has no
+    free cron product.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        secret = request.headers.get('X-Cron-Secret')
+        if secret != os.environ.get('CRON_SECRET'):
+            return Response({'message': 'Forbidden.'}, status=http_status.HTTP_403_FORBIDDEN)
+
+        from django.core.management import call_command
+        call_command('send_followup_reminders')
+        return Response({'message': 'Reminders sent.'})

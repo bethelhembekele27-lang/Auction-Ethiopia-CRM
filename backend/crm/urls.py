@@ -29,6 +29,7 @@ from .views import (
     PushSubscribeView,
     PushUnsubscribeView,
     VapidPublicKeyView,
+    TriggerFollowupRemindersView,
 )
 
 urlpatterns = [
@@ -74,4 +75,5 @@ urlpatterns = [
     path('push/subscribe/', PushSubscribeView.as_view(), name='push-subscribe'),
     path('push/unsubscribe/', PushUnsubscribeView.as_view(), name='push-unsubscribe'),
     path('push/vapid-public-key/', VapidPublicKeyView.as_view(), name='push-vapid-key'),
+    path('internal/send-followup-reminders/', TriggerFollowupRemindersView.as_view(), name='trigger-followup-reminders'),
 ]

@@ -1,0 +1,15 @@
+name: Daily Follow-up Reminders
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # 3:00 AM UTC = 6:00 AM Addis Ababa time
+  workflow_dispatch: {}    # lets you manually trigger it from GitHub's UI for testing
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call reminder endpoint
+        run: |
+          curl -X POST "${{ secrets.CRM_BACKEND_URL }}/api/internal/send-followup-reminders/" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}"
