@@ -33,9 +33,9 @@ from .views import (
 )
 
 urlpatterns = [
-    path('auth/login', LoginView.as_view(), name='auth-login'),
-    path('auth/logout', LogoutView.as_view(), name='auth-logout'),
-    path('auth/google', GoogleLoginView.as_view(), name='auth-google'),
+    path('auth/login/', LoginView.as_view(), name='auth-login'),
+    path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
+    path('auth/google/', GoogleLoginView.as_view(), name='auth-google'),
 
     path('account/change-password/', ChangePasswordView.as_view(), name='account-change-password'),
     path('account/username/', UpdateUsernameView.as_view(), name='account-update-username'),
