@@ -26,6 +26,9 @@ from .views import (
     RoleDeleteView,
     ChangePasswordView,
     UpdateUsernameView,
+    PushSubscribeView,
+    PushUnsubscribeView,
+    VapidPublicKeyView,
 )
 
 urlpatterns = [
@@ -65,6 +68,10 @@ urlpatterns = [
     # urls.py
     path('inquiries/<str:inquiry_id>/attachments/', InquiryAttachmentView.as_view()),
     path('inquiries/<str:inquiry_id>/attachments/<int:attachment_id>/', InquiryAttachmentView.as_view()),
-    
+
     path('roles/<str:role_key>/', RoleDeleteView.as_view(), name='role-delete'),
+
+    path('push/subscribe/', PushSubscribeView.as_view(), name='push-subscribe'),
+    path('push/unsubscribe/', PushUnsubscribeView.as_view(), name='push-unsubscribe'),
+    path('push/vapid-public-key/', VapidPublicKeyView.as_view(), name='push-vapid-key'),
 ]

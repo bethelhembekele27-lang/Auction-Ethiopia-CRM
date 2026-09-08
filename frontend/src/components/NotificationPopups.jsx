@@ -5,6 +5,7 @@ export const NOTIFICATION_KIND_STYLE = {
   reminder: { icon: "⏰", color: "var(--amber)", bg: "var(--amber-bg)", label: "Follow-up reminder" },
   escalation_new: { icon: "🚩", color: "var(--red)", bg: "var(--red-bg)", label: "Manager request" },
   escalation_resolved: { icon: "✓", color: "var(--green)", bg: "var(--green-bg)", label: "Resolved" },
+  complaint_resolved: { icon: "✓", color: "var(--green)", bg: "var(--green-bg)", label: "Complaint resolved" },
 };
 
 export function timeAgo(ts) {

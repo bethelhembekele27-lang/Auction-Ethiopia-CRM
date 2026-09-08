@@ -7,7 +7,7 @@ from rest_framework.authtoken.models import Token
 from .permissions import has_any_role
 from .models import (
     Employee, Inquiry, PERMISSIONS, Role, Followup, VisitSetup,
-    Appointment, Complaint, Escalation, AuditLog,InquiryAttachment,
+    Appointment, Complaint, Escalation, AuditLog,InquiryAttachment,PushSubscription,
 )
 from .serializers import (
     EmployeeCreateSerializer,
@@ -28,10 +28,14 @@ from .serializers import (
     ChangePasswordSerializer,
     UpdateUsernameSerializer,
     AdminResetPasswordSerializer,
+    PushSubscriptionSerializer,
+    
 )
 from django.contrib.auth.models import User
 from rest_framework.parsers import MultiPartParser
 from django.shortcuts import get_object_or_404
+import os
+from .push import send_push_to_user
 # =============================================================================
 # Shared helpers
 # =============================================================================
@@ -723,6 +727,19 @@ class ComplaintDetailView(APIView):
                 f'{updated.publicId} · {updated.callerName}',
             )
 
+        if prev_status != 'Resolved' and updated.status == 'Resolved' and updated.inquiryId:
+            try:
+                linked_inquiry = Inquiry.objects.select_related('operator__user').get(publicId=updated.inquiryId)
+                if linked_inquiry.operator and linked_inquiry.operator.user:
+                    send_push_to_user(
+                        linked_inquiry.operator.user,
+                        title=f"Complaint resolved — {updated.publicId}",
+                        body=f'{updated.callerName}\'s complaint ({updated.category}) was resolved.',
+                        url="/?page=complaints",
+                    )
+            except Inquiry.DoesNotExist:
+                pass
+
         return Response(ComplaintSerializer(updated).data)
     
     def delete(self, request, complaint_id):
@@ -771,6 +788,18 @@ class EscalationListCreateView(APIView):
             request, 'Send to Auction Manager', '—', f'{escalation.publicId} created',
             f'{escalation.inquiry.publicId} · {escalation.callerName} — flagged by {escalation.operatorName}',
         )
+
+        # Push every auction_manager — they don't get in-app-only paging for
+        # this, same as the existing bell/popup behavior for this notification kind.
+        managers = User.objects.filter(employee__role__key='auction_manager')
+        for manager in managers:
+            send_push_to_user(
+                manager,
+                title=f"New manager request from {escalation.operatorName}",
+                body=f'{escalation.inquiry.publicId} ({escalation.callerName}) — "{escalation.note[:80]}"',
+                url="/?page=escalations",
+            )
+
         return Response(EscalationSerializer(escalation).data, status=http_status.HTTP_201_CREATED)
 
 
@@ -800,6 +829,15 @@ class EscalationResolveView(APIView):
             request, 'Resolve manager request', 'Open', 'Resolved',
             f'{updated.publicId} · notified {updated.operatorName}',
         )
+
+        if updated.createdBy:
+            send_push_to_user(
+                updated.createdBy,
+                title=f"Manager request resolved — {updated.publicId}",
+                body=f'The Auction Manager resolved your request on {updated.inquiry.publicId} ({updated.callerName}): "{(updated.resolutionNote or "")[:80]}"',
+                url="/?page=inquiries",
+            )
+
         return Response(EscalationSerializer(updated).data)
 
 
@@ -874,3 +912,28 @@ class GoogleLoginView(APIView):
                 'operatorName': operator_name,
             },
         })
+
+class PushSubscribeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = PushSubscriptionSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({'message': 'Subscribed.'}, status=http_status.HTTP_201_CREATED)
+
+
+class PushUnsubscribeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        endpoint = request.data.get('endpoint')
+        PushSubscription.objects.filter(user=request.user, endpoint=endpoint).delete()
+        return Response({'message': 'Unsubscribed.'})
+
+
+class VapidPublicKeyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({'publicKey': os.environ.get('VAPID_PUBLIC_KEY', '')})

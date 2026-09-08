@@ -399,3 +399,18 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.actionDate:%Y-%m-%d %H:%M} — {self.action}"
+
+class PushSubscription(models.Model):
+    """
+    One row per browser/device a user has granted push permission on.
+    A user can have several (phone + laptop + work PC), so this is NOT
+    one-to-one with User — push sends fan out to every row for that user.
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.URLField(max_length=500, unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    createdAt = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"PushSubscription({self.user.username})"

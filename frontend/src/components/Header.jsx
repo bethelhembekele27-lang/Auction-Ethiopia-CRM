@@ -4,7 +4,20 @@ import { logo } from "../constants/assets";
 import { NotificationBell } from "./NotificationBell";
 import { ProfileMenu } from "./ProfileMenu";
 
-export default function Header({ page, setPage, role, username, theme, setTheme, onLogout, onOpenAccountSettings, bellItems, onGoToNotification }) {
+export default function Header({
+  page,
+  setPage,
+  role,
+  username,
+  theme,
+  setTheme,
+  onLogout,
+  onOpenAccountSettings,
+  bellItems,
+  onGoToNotification,
+  onRequestBrowserNotifications
+}) {
+
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const goTo = (key) => {
@@ -49,7 +62,14 @@ export default function Header({ page, setPage, role, username, theme, setTheme,
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <NotificationBell items={bellItems} onGoTo={(link) => { onGoToNotification(link); setMobileNavOpen(false); }} />
+        <NotificationBell
+          items={bellItems}
+          onRequestPermission={onRequestBrowserNotifications}
+          onGoTo={(link) => {
+            onGoToNotification(link);
+            setMobileNavOpen(false);
+          }}
+        />
         <ProfileMenu username={username} role={role} theme={theme} setTheme={setTheme} onLogout={onLogout} onOpenAccountSettings={onOpenAccountSettings} />
       </div>
       {mobileNavOpen && (

@@ -22,6 +22,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import { roleLabels, EDIT_ROLES, ADMIN_LIKE_ROLES, navItems, defaultPageForRole } from "../constants/roles";
 import { pad, nowStamp } from "../utils/format";
 import * as api from "../api";
+import { enablePushForThisDevice } from "../utils/pushSetup";
 
 // This file is intentionally thin — routing + session shell only. All
 // page logic lives in pages/, all shared UI in components/. Every entity
@@ -48,13 +49,36 @@ function loadStoredSession() {
     return null;
   }
 }
-
+// Handles a push notification click when NO tab was open — sw.js opens
+// a fresh one at e.g. /?page=escalations. Read that once on first mount
+// so the fresh page lands on the right tab instead of always defaulting
+// to Dashboard. Only applies if a session already exists (loadStoredSession
+// runs first); an unauthenticated visitor just sees Login as normal.
+function getPageFromURL() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("page");
+  } catch {
+    return null;
+  }
+}
 export default function App() {
   const [session, setSession] = useState(loadStoredSession);
   const [page, setPage] = useState(() => {
     const restored = loadStoredSession();
-    return restored ? defaultPageForRole(restored.role) : "dashboard";
+    if (!restored) return "dashboard";
+    const urlPage = getPageFromURL();
+    return urlPage || defaultPageForRole(restored.role);
   });
+  // One-time cleanup: if we landed here via a push-notification deep link
+// (?page=...), strip it from the address bar after the initial page
+// state has already consumed it — otherwise a manual refresh later
+// would keep re-forcing that same page every time.
+  useEffect(() => {
+    if (window.location.search.includes("page=")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
   const [theme, setTheme] = useState(() => localStorage.getItem("crm_theme") || "light");
   useEffect(() => {
     localStorage.setItem("crm_theme", theme);
@@ -174,6 +198,20 @@ export default function App() {
     window.addEventListener("auth:expired", handleExpired);
     return () => window.removeEventListener("auth:expired", handleExpired);
   }, []);
+  // Handles a push notification click while the tab is already open in
+// the background — sw.js posts this message when it focuses an existing
+// client instead of opening a new one.
+  useEffect(() => {
+    function handleMessage(event) {
+      if (event.data?.type === "PUSH_NAVIGATE") {
+        const params = new URLSearchParams(event.data.url.split("?")[1] || "");
+        const page = params.get("page");
+        if (page) setPage(page);
+      }
+    }
+    navigator.serviceWorker?.addEventListener("message", handleMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", handleMessage);
+  }, []);
 
   function handleLogin(role, username, operatorName) {
     setSession({ role, username, operatorName: operatorName || null });
@@ -207,18 +245,46 @@ export default function App() {
   const { popupItems, bellItems, popAway, clearFromBell } = useNotifications(
     session || { role: null, username: null, operatorName: null },
     followups,
-    escalations
+    escalations,
+    complaints,
+    inquiries
   );
+
+  async function requestBrowserNotifications() {
+    if (!("Notification" in window)) {
+      return;
+    }
+
+    try {
+      if (Notification.permission === "default") {
+        await Notification.requestPermission();
+      }
+
+      if (Notification.permission === "granted") {
+        enablePushForThisDevice().catch(() => {});
+      }
+    } catch {
+      // Browser does not support or blocked permission request.
+    }
+  }
 
   if (!session) return <Login onLogin={handleLogin} />;
 
   return (
     <div className="flex flex-col min-h-screen max-w-[100vw] text-[color:var(--text)] bg-[color:var(--paper)]" data-theme={theme}>
       <Header
-        page={page} setPage={setPage} role={session.role} username={session.username}
-        theme={theme} setTheme={setTheme} onLogout={handleLogout} onOpenAccountSettings={() => setShowAccountSettings(true)}
-        bellItems={bellItems} onGoToNotification={setPage}
-      />
+          page={page}
+          setPage={setPage}
+          role={session.role}
+          username={session.username}
+          theme={theme}
+          setTheme={setTheme}
+          onLogout={handleLogout}
+          onOpenAccountSettings={() => setShowAccountSettings(true)}
+          bellItems={bellItems}
+          onGoToNotification={setPage}
+          onRequestBrowserNotifications={requestBrowserNotifications}
+        />
       <div className="flex-1 flex flex-col min-w-0">
         <div className="pt-[26px] px-7 pb-15 mobile:pt-[18px] mobile:px-4 mobile:pb-10">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>

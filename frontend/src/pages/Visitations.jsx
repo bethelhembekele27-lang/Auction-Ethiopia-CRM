@@ -10,7 +10,9 @@ import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
 import { useConfirm } from "../hooks/useConfirm";
 import AutoCompleteField from "../components/AutoCompleteField";
 import ConfirmDialog from "../components/ConfirmDialog";
-
+import MonthCalendar from "../components/MonthCalendar";
+import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
+import { getRecentUniqueOptions } from "../utils/recentOptions";
 export const emptyAppt = {
   id: "", auction: "", visitorName: "", phone: "", company: "",
   visitDate: "", visitTime: "", assignedStaff: "", status: "Requested", notes: "",
@@ -37,7 +39,7 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [bulkError, setBulkError] = useState("");
-
+  const [viewMode, setViewMode] = useState("list"); // "list" | "calendar"
   const sel = useRowSelection((a) => a.id);
   const { pending, confirm, cancel, run } = useConfirm();
 
@@ -68,18 +70,19 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   const setupOptions = useMemo(() => {
     if (draft.setupId && !openVisitSetups.some((v) => v.id === draft.setupId)) {
       const current = visitSetups.find((v) => v.id === draft.setupId);
-      if (current) return [...openVisitSetups, current];
+      if (current) return [
+        openVisitSetups, current];
     }
     return openVisitSetups;
   }, [openVisitSetups, visitSetups, draft.setupId]);
 
   const auctionOptions = useMemo(
-    () => [...new Set(appointments.map((a) => a.auction).filter(Boolean))].sort(),
+    () => getRecentUniqueOptions(appointments, (a) => a.auction, (a) => a.visitDate, 30),
     [appointments]
   );
   // 3d: repeat visitors — offer their phone from history.
   const phoneOptions = useMemo(
-    () => [...new Set(appointments.map((a) => a.phone).filter(Boolean))].sort(),
+    () => getRecentUniqueOptions(appointments, (a) => a.phone, (a) => a.visitDate, 30),
     [appointments]
   );
 
@@ -114,6 +117,11 @@ export default function Visitations({ appointments, setAppointments, visitSetups
 
   async function save() {
     if (!draft.visitorName || !draft.phone || !draft.visitDate) return;
+    if (!isValidEthiopianPhone(draft.phone)) {
+      setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
+      return;
+    }
+    
     setSaving(true);
     setSaveError("");
     try {
@@ -170,6 +178,17 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           {WHEN_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           <option value="custom">Custom date…</option>
         </select>
+        <div className="flex gap-1 ml-2">
+          <button
+            className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] px-2.5 py-[5px] text-xs cursor-pointer" + (viewMode === "list" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : " bg-[color:var(--panel)] text-[color:var(--text)]")}
+            onClick={() => setViewMode("list")}
+          >List</button>
+          <button
+            className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] px-2.5 py-[5px] text-xs cursor-pointer" + (viewMode === "calendar" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : " bg-[color:var(--panel)] text-[color:var(--text)]")}
+            onClick={() => setViewMode("calendar")}
+          >Calendar</button>
+        </div>
+
         <input className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" type="date" value={pickDate} onChange={(e) => setPickDate(e.target.value)} title="Pick a specific day" />
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fCompany} onChange={(e) => { setFCompany(e.target.value); setFBatch("All"); }} title="Filter by company">
           <option value="All">All companies</option>{companyOptions.map((c) => <option key={c}>{c}</option>)}
@@ -210,31 +229,40 @@ export default function Visitations({ appointments, setAppointments, visitSetups
       )}
       {bulkError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>{bulkError}</div>}
 
-      {sorted.length === 0 ? <EmptyState text="No visitations found." /> : (
-        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-          <div style={{ overflowX: "auto" }}>
-            <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead><tr className="group">
-                {canEdit && <HeaderCheckbox checked={sel.isAllSelected(sorted)} onChange={() => sel.toggleAll(sorted)} />}
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Visitor</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company / Batch</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Time</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
-              </tr></thead>
-              <tbody>
-                {sorted.map((a) => (
-                  <tr key={a.id} className="group">
-                    {canEdit && <RowCheckbox checked={sel.isSelected(a)} onChange={() => sel.toggle(a)} label={`Select ${a.id}`} />}
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{a.id}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.visitorName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.phone}</div></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.company}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.batch}</div></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(a.visitDate)}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{a.visitTime}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.guideName || a.assignedStaff}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.guidePhone}</div></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={a.status} kind={APPT_STAMP[a.status]} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {viewMode === "calendar" ? (
+        <MonthCalendar
+          items={sorted.map((a) => ({ ...a, date: a.visitDate }))}
+          getKey={(a) => a.id}
+          getLabel={(a) => `${a.visitTime} ${a.visitorName}`}
+          onItemClick={(a) => openEdit(a)}
+        />
+        ) : (
+          sorted.length === 0 ? <EmptyState text="No visitations found." /> : (
+            <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+              <div style={{ overflowX: "auto" }}>
+                <table className="w-full border-collapse text-[13px] min-w-[640px]">
+                  <thead><tr className="group">
+                    {canEdit && <HeaderCheckbox checked={sel.isAllSelected(sorted)} onChange={() => sel.toggleAll(sorted)} />}
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Visitor</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company / Batch</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Time</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
+                  </tr></thead>
+                  <tbody>
+                    {sorted.map((a) => (
+                      <tr key={a.id} className="group">
+                        {canEdit && <RowCheckbox checked={sel.isSelected(a)} onChange={() => sel.toggle(a)} label={`Select ${a.id}`} />}
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{a.id}</td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.visitorName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.phone}</div></td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.company}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.batch}</div></td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(a.visitDate)}</td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{a.visitTime}</td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.guideName || a.assignedStaff}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.guidePhone}</div></td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={a.status} kind={APPT_STAMP[a.status]} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+        )
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "Register visitor"} wide>

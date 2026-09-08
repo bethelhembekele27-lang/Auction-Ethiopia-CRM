@@ -8,7 +8,8 @@ import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { EditIcon, DeleteIcon, PlusIcon } from "../components/icons";
 import AutoCompleteField from "../components/AutoCompleteField";
-
+import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
+import { getRecentUniqueOptions } from "../utils/recentOptions";
 const emptyVisitSetup = {
   id: "", company: "", batch: "", dateFrom: "", dateTo: "", address: "", items: "",
   guideName: "", guidePhone: "", guideTimeFrom: "", guideTimeTo: "",
@@ -95,10 +96,18 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
   // 3d: "pick from history or type new" for fields that repeat across
   // visit setups — derived live from existing records, same pattern as
   // Inquiries.jsx's auction/batch AutoCompleteField usage.
-  const companyOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.company).filter(Boolean))].sort(), [visitSetups]);
-  const guideNameOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.guideName).filter(Boolean))].sort(), [visitSetups]);
-  const guidePhoneOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.guidePhone).filter(Boolean))].sort(), [visitSetups]);
-
+  const companyOptions = useMemo(
+    () => getRecentUniqueOptions(visitSetups, (v) => v.company, (v) => v.createdDate, 30),
+    [visitSetups]
+  );
+  const guideNameOptions = useMemo(
+    () => getRecentUniqueOptions(visitSetups, (v) => v.guideName, (v) => v.createdDate, 30),
+    [visitSetups]
+  );
+  const guidePhoneOptions = useMemo(
+    () => getRecentUniqueOptions(visitSetups, (v) => v.guidePhone, (v) => v.createdDate, 30),
+    [visitSetups]
+  );
   const filtered = useMemo(() => {
     if (!query) return visitSetups;
     const q = query.toLowerCase();
@@ -130,6 +139,10 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
   }
   async function save() {
     if (!draft.company || !draft.batch || !draft.guideName || !draft.guidePhone) return;
+    if (!isValidEthiopianPhone(draft.guidePhone)) {
+      setSaveError(`Guide phone isn't valid. ${PHONE_HINT}`);
+      return;
+    }
     setSaving(true);
     setSaveError("");
     try {

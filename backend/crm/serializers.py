@@ -14,7 +14,18 @@ from django.utils.dateparse import parse_date
 from .models import (
     Inquiry,InquiryAttachment ,Employee, CATEGORIES, PRIORITIES, INQUIRY_STATUSES,
     Followup, FOLLOWUP_SETTABLE_STATUSES,VisitSetup, DAYS_OF_WEEK,Appointment, Followup,Role,Complaint, COMPLAINT_CATEGORIES, DEPARTMENTS, COMPLAINT_STATUSES,Escalation,
-    AuditLog,)
+    AuditLog,PushSubscription,)
+import re
+
+ET_PHONE_RE = re.compile(r'^(?:\+251|0)(9|7)\d{8}$')
+
+def validate_ethiopian_phone(value):
+    cleaned = (value or '').replace(' ', '').replace('-', '')
+    if not ET_PHONE_RE.match(cleaned):
+        raise serializers.ValidationError(
+            "Enter a valid Ethiopian phone number, e.g. 0912345678 or +251912345678."
+        )
+    return cleaned
 
 # =============================================================================
 # Roles
@@ -192,6 +203,8 @@ class InquirySerializer(serializers.ModelSerializer):
         data['followUpDate'] = instance.followUpDate.isoformat() if instance.followUpDate else ''
         data['resolvedDate'] = instance.resolvedDate.isoformat() if instance.resolvedDate else ''
         return data
+    def validate_phone(self, value):
+        return validate_ethiopian_phone(value)
 
     def validate_category(self, value):
         if value not in CATEGORIES:
@@ -515,6 +528,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         data['setupId'] = instance.setup.publicId if instance.setup else ''
         return data
+    def validate_phone(self, value):
+     return validate_ethiopian_phone(value)
 
     def _resolve_setup(self, setup_id):
         if not setup_id:
@@ -607,6 +622,8 @@ class ComplaintSerializer(serializers.ModelSerializer):
         if value not in DEPARTMENTS:
             raise serializers.ValidationError(f"Must be one of: {', '.join(DEPARTMENTS)}")
         return value
+    def validate_phone(self, value):
+        return validate_ethiopian_phone(value)
 
     def validate_status(self, value):
         if value not in COMPLAINT_STATUSES:
@@ -816,3 +833,17 @@ class GoogleLoginSerializer(serializers.Serializer):
         data['user'] = user
         data['employee'] = employee
         return data
+    
+class PushSubscriptionSerializer(serializers.Serializer):
+    endpoint = serializers.URLField()
+    keys = serializers.DictField()
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        endpoint = validated_data['endpoint']
+        keys = validated_data['keys']
+        sub, _ = PushSubscription.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={'user': user, 'p256dh': keys.get('p256dh', ''), 'auth': keys.get('auth', '')},
+        )
+        return sub

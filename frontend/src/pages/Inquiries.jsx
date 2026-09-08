@@ -12,6 +12,8 @@ import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { EditIcon, DeleteIcon, CalendarIcon, SendIcon } from "../components/icons";
 import AutoCompleteField from "../components/AutoCompleteField";
+import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
+import { getRecentUniqueOptions } from "../utils/recentOptions";
 
 const emptyInquiry = {
   id: "", callerName: "", phone: "", company: "", auction: "", batch: "", category: CATEGORIES[0],
@@ -49,6 +51,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   const [escError, setEscError] = useState("");
 
   const sel = useRowSelection((i) => i.id);
+  
 
   const openVisitSetups = useMemo(() => (visitSetups || []).filter(isSetupOpen), [visitSetups]);
   const setupOptions = useMemo(() => {
@@ -60,20 +63,20 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   }, [openVisitSetups, visitSetups, apptDraft]);
 
   const auctionOptions = useMemo(
-    () => [...new Set(inquiries.map((i) => i.auction).filter(Boolean))].sort(),
+    () => getRecentUniqueOptions(inquiries, (i) => i.auction, (i) => i.dateTime, 30),
     [inquiries]
   );
   const batchOptions = useMemo(
-    () => [...new Set(inquiries.map((i) => i.batch).filter(Boolean))].sort(),
+    () => getRecentUniqueOptions(inquiries, (i) => i.batch, (i) => i.dateTime, 30),
     [inquiries]
   );
   // 3d: company + phone repeat across callers, so offer history here too.
   const companyOptions = useMemo(
-    () => [...new Set(inquiries.map((i) => i.company).filter(Boolean))].sort(),
+    () => getRecentUniqueOptions(inquiries, (i) => i.company, (i) => i.dateTime, 30),
     [inquiries]
   );
   const phoneOptions = useMemo(
-    () => [...new Set(inquiries.map((i) => i.phone).filter(Boolean))].sort(),
+    () => getRecentUniqueOptions(inquiries, (i) => i.phone, (i) => i.dateTime, 30),
     [inquiries]
   );
   const selectedSetup = apptDraft ? (visitSetups || []).find((v) => v.id === apptDraft.setupId) : null;
@@ -157,6 +160,10 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   function openEditSelected() { if (soleSelected) openEdit(soleSelected); }
   async function save() {
     if (!draft.callerName || !draft.phone) return;
+    if (!isValidEthiopianPhone(draft.phone)) {
+      setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
+      return;
+    }
     let record = { ...draft };
     if (["Resolved", "Closed"].includes(record.status) && !record.resolvedDate) {
       record.resolvedDate = todayISO();
@@ -243,6 +250,10 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   }
   async function saveVisitation() {
     if (!apptDraft.visitorName || !apptDraft.phone || !apptDraft.visitDate) return;
+    if (!isValidEthiopianPhone(apptDraft.phone)) {
+      setApptError(`Phone number isn't valid. ${PHONE_HINT}`);
+      return;
+    }
     setApptSaving(true);
     setApptError("");
     try {
@@ -277,6 +288,10 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   function openComplaintSelected() { if (soleSelected) openComplaintFor(soleSelected); }
   async function saveComplaint() {
     if (!cmpDraft.callerName || !cmpDraft.description) return;
+    if (!isValidEthiopianPhone(cmpDraft.phone)) {
+      setCmpError(`Phone number isn't valid. ${PHONE_HINT}`);
+      return;
+    } 
     setCmpSaving(true);
     setCmpError("");
     try {

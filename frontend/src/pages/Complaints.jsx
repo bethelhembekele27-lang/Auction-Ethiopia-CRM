@@ -9,6 +9,8 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import { complaints as complaintsApi } from "../api";
 import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
 import AutoCompleteField from "../components/AutoCompleteField";
+import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
+import { getRecentUniqueOptions } from "../utils/recentOptions";
 
 export const emptyComplaint = {
   id: "", inquiryId: "", callerName: "", phone: "", category: COMPLAINT_CATEGORIES[0],
@@ -31,7 +33,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
   // 3d: repeat callers — offer their phone from history instead of
   // retyping it every time a new complaint comes in from them.
   const phoneOptions = useMemo(
-    () => [...new Set(complaints.map((c) => c.phone).filter(Boolean))].sort(),
+    () => getRecentUniqueOptions(complaints, (c) => c.phone, (c) => c.date, 30),
     [complaints]
   );
 
@@ -92,6 +94,10 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
 
   async function save() {
     if (!draft.callerName || !draft.description) return;
+    if (!isValidEthiopianPhone(draft.phone)) {
+      setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
+      return;
+    }
 
     let record = { ...draft };
 
@@ -203,6 +209,13 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
           <PlusIcon /><span>New complaint</span>
         </button>}
       </div>
+
+      {session && ["administrator", "auction_manager"].includes(session.role) && (
+        <div className="bg-[color:var(--amber-bg)] text-[color:var(--amber)] text-[13px] font-medium px-3.5 py-2.5 rounded-md flex items-center gap-2" style={{ marginBottom: 14 }}>
+          <span style={{ fontSize: 15 }}>⚠</span>
+          {complaints.filter((c) => c.status === "Open").length} open complaint{complaints.filter((c) => c.status === "Open").length === 1 ? "" : "s"} awaiting resolution
+        </div>
+      )}
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
