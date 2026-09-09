@@ -153,6 +153,7 @@ class EmployeeCreateSerializer(serializers.Serializer):
 
         return employee
 
+
 class InquiryAttachmentSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
 
@@ -162,9 +163,17 @@ class InquiryAttachmentSerializer(serializers.ModelSerializer):
 
     def get_url(self, obj):
         request = self.context.get('request')
-        if request and obj.file:
-            return request.build_absolute_uri(obj.file.url)
-        return obj.file.url if obj.file else None
+
+        if not obj.file:
+            return None
+
+        if request:
+            return request.build_absolute_uri(
+                f'/api/inquiries/{obj.inquiry.publicId}/attachments/{obj.id}/'
+            )
+
+        return f'/api/inquiries/{obj.inquiry.publicId}/attachments/{obj.id}/'
+
 
 
 class InquirySerializer(serializers.ModelSerializer):

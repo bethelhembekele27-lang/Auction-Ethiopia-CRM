@@ -464,17 +464,67 @@ class InquiryAttachmentView(APIView):
     def post(self, request, inquiry_id):
         inquiry = get_object_or_404(Inquiry, publicId=inquiry_id)
         f = request.FILES.get('file')
+
         if not f:
-            return Response({'message': 'file is required'}, status=400)
+            return Response(
+                {'message': 'file is required'},
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
         att = InquiryAttachment.objects.create(
-            inquiry=inquiry, file=f, fileName=f.name, fileSize=f.size, uploadedBy=request.user
+            inquiry=inquiry,
+            file=f,
+            fileName=f.name,
+            fileSize=f.size,
+            uploadedBy=request.user,
         )
-        return Response(InquiryAttachmentSerializer(att, context={'request': request}).data)
+
+        return Response(
+            InquiryAttachmentSerializer(
+                att,
+                context={'request': request}
+            ).data
+        )
+
+    def get(self, request, inquiry_id, attachment_id):
+        att = get_object_or_404(
+            InquiryAttachment,
+            id=attachment_id,
+            inquiry__publicId=inquiry_id,
+        )
+
+        if not att.file:
+            return Response(
+                {'message': 'Attachment file not found.'},
+                status=http_status.HTTP_404_NOT_FOUND
+            )
+
+        from django.http import FileResponse
+
+        try:
+            response = FileResponse(
+                att.file.open('rb'),
+                as_attachment=False,
+                filename=att.fileName,
+            )
+            return response
+        except FileNotFoundError:
+            return Response(
+                {'message': 'Attachment file not found on the server.'},
+                status=http_status.HTTP_404_NOT_FOUND
+            )
 
     def delete(self, request, inquiry_id, attachment_id):
-        att = get_object_or_404(InquiryAttachment, id=attachment_id, inquiry__publicId=inquiry_id)
+        att = get_object_or_404(
+            InquiryAttachment,
+            id=attachment_id,
+            inquiry__publicId=inquiry_id,
+        )
+
         att.delete()
-        return Response(status=204)
+
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
+
 
 # =============================================================================
 # Followups  (§3)

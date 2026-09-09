@@ -15,6 +15,41 @@ import AutoCompleteField from "../components/AutoCompleteField";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
 import { getRecentUniqueOptions } from "../utils/recentOptions";
 
+async function openAttachment(att) {
+  if (!att?.url) return;
+
+  const token =
+    localStorage.getItem("auth_token") ||
+    sessionStorage.getItem("auth_token");
+
+  if (!token) {
+    alert("Your session has expired. Please log in again.");
+    return;
+  }
+
+  try {
+    const response = await fetch(att.url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to open attachment (${response.status})`);
+    }
+
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    window.open(blobUrl, "_blank", "noopener,noreferrer");
+
+    // Give the new tab time to load before releasing the object URL.
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (error) {
+    console.error("Failed to open attachment:", error);
+    alert("Couldn't open this attachment. Please try again.");
+  }
+}
 const emptyInquiry = {
   id: "", callerName: "", phone: "", company: "", auction: "", batch: "", category: CATEGORIES[0],
   priority: "Medium", operator: "", dateTime: "", description: "", status: "Open",
@@ -432,9 +467,22 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           {draft.attachments.map((a, idx) => (
             <div className="flex items-center gap-2 text-[13px] px-2.5 py-2 rounded-[5px] bg-[color:var(--paper)]" key={a.id || idx}>
               {a.url ? (
-                <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--brass-dark)", textDecoration: "underline" }}>
+                <button
+                  type="button"
+                  onClick={() => openAttachment(a)}
+                  style={{
+                    color: "var(--brass-dark)",
+                    textDecoration: "underline",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    font: "inherit",
+                    textAlign: "left",
+                  }}
+                >
                   {a.fileName || a}
-                </a>
+                </button>
               ) : (
                 <span>{a.fileName || a}</span>
               )}
