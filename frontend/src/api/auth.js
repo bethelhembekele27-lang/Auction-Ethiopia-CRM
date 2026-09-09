@@ -2,7 +2,7 @@ import { api } from "./client";
 
 // POST /api/auth/login -> { token, user }
 export function login(username, password) {
-  return api.post("/auth/login", { username, password });
+  return api.post("/auth/login/", { username, password });
 }
 
 // POST /api/auth/google -> { token, user }
@@ -12,12 +12,12 @@ export function login(username, password) {
 // auto-creates an account. A rejected sign-in comes back as a normal
 // ApiError with status 401 and a message, same as bad username/password.
 export function loginWithGoogle(idToken) {
-  return api.post("/auth/google", { id_token: idToken });
+  return api.post("/auth/google/", { id_token: idToken });
 }
 
 // POST /api/auth/logout -> 204
 export function logout() {
-  return api.post("/auth/logout");
+  return api.post("/auth/logout/");
 }
 
 // PATCH /api/account/username/ — Account Settings modal, display name only.
