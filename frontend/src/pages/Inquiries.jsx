@@ -256,6 +256,13 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
         setInquiries((prevList) => [created, ...prevList]);
         addAudit("Log inquiry", "—", `${created.id} created`, `${created.category} from ${created.callerName}`);
       }
+      // Creating/editing an Inquiry can create or update a linked Followup
+      // server-side (InquirySerializer._sync_followup) — refresh so the
+      // Follow-ups page reflects it without needing a full page reload.
+      try {
+        const refreshedFollowups = await followupsApi.listFollowups();
+        setFollowups(refreshedFollowups || []);
+      } catch { /* non-fatal — follow-up list just won't refresh this instant */ }
       setModalOpen(false);
       sel.clear();
     } catch (err) {

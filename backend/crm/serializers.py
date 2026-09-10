@@ -175,32 +175,45 @@ class InquiryAttachmentSerializer(serializers.ModelSerializer):
         return f'/api/inquiries/{obj.inquiry.publicId}/attachments/{obj.id}/'
 
 
-
 class InquirySerializer(serializers.ModelSerializer):
     """
-    - `id` <-> Inquiry.publicId
-    - `operator` is READ-ONLY — always derived from Inquiry.operator FK
-      and never accepted from the client. It's set server-side from
-      request.user's linked Employee at creation time (see
-      InquiryListCreateView.post below). This is what fixes the
-      "Incorrect type. Expected pk value, received str." error — the
-      client used to send the operator's display name as a string into
-      a field DRF treated as a foreign-key pk.
-    - followUpDate / resolvedDate: "" means "none", hand-rolled as
-      CharFields and parsed manually.
+    Maps the Inquiry API fields onto the Inquiry model.
+
+    Inquiry follow-ups are synchronized server-side:
+    - Creating an Inquiry with followUpDate creates one linked Followup.
+    - Changing followUpDate updates the linked Followup.
+    - Clearing followUpDate removes an active/pending linked Followup.
+    - Caller/company/batch changes are copied to the linked Followup.
     """
+
     id = serializers.CharField(source='publicId', read_only=True)
     operator = serializers.SerializerMethodField()
     followUpDate = serializers.CharField(required=False, allow_blank=True)
     resolvedDate = serializers.CharField(required=False, allow_blank=True)
-    attachments = InquiryAttachmentSerializer(source='attachment_files', many=True, read_only=True)
+    attachments = InquiryAttachmentSerializer(
+        source='attachment_files',
+        many=True,
+        read_only=True
+    )
 
     class Meta:
         model = Inquiry
         fields = [
-            'id', 'callerName', 'phone', 'company', 'auction', 'batch',
-            'category', 'priority', 'operator', 'dateTime', 'description',
-            'status', 'followUpDate', 'resolutionNotes', 'resolvedDate',
+            'id',
+            'callerName',
+            'phone',
+            'company',
+            'auction',
+            'batch',
+            'category',
+            'priority',
+            'operator',
+            'dateTime',
+            'description',
+            'status',
+            'followUpDate',
+            'resolutionNotes',
+            'resolvedDate',
             'attachments',
         ]
 
@@ -209,45 +222,142 @@ class InquirySerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data['followUpDate'] = instance.followUpDate.isoformat() if instance.followUpDate else ''
-        data['resolvedDate'] = instance.resolvedDate.isoformat() if instance.resolvedDate else ''
+        data['followUpDate'] = (
+            instance.followUpDate.isoformat()
+            if instance.followUpDate
+            else ''
+        )
+        data['resolvedDate'] = (
+            instance.resolvedDate.isoformat()
+            if instance.resolvedDate
+            else ''
+        )
         return data
-    def validate_phone(self, value):
-        return validate_ethiopian_phone(value)
 
     def validate_category(self, value):
         if value not in CATEGORIES:
-            raise serializers.ValidationError(f"Must be one of: {', '.join(CATEGORIES)}")
+            raise serializers.ValidationError(
+                f"Must be one of: {', '.join(CATEGORIES)}"
+            )
         return value
 
     def validate_priority(self, value):
         if value not in PRIORITIES:
-            raise serializers.ValidationError(f"Must be one of: {', '.join(PRIORITIES)}")
+            raise serializers.ValidationError(
+                f"Must be one of: {', '.join(PRIORITIES)}"
+            )
         return value
 
     def validate_status(self, value):
         if value not in INQUIRY_STATUSES:
-            raise serializers.ValidationError(f"Must be one of: {', '.join(INQUIRY_STATUSES)}")
+            raise serializers.ValidationError(
+                f"Must be one of: {', '.join(INQUIRY_STATUSES)}"
+            )
         return value
+
+    def _sync_followup(self, inquiry, old_follow_up_date=None):
+        """
+        Keep the Inquiry's linked Followup synchronized.
+
+        Only ever touches the *Pending* Followup tied to this inquiry —
+        never a resolved (Satisfied/Not Satisfied/No Show) one. This
+        matters: if the original auto-created Followup was already
+        resolved and the Inquiry's follow-up date is changed afterward,
+        a FRESH Pending Followup must be created, not the resolved one
+        silently overwritten (which would corrupt a historical record
+        with a new date while leaving its old resolved status intact).
+
+        Appointment-created Followups are unaffected because their
+        inquiry field is NULL.
+        """
+        pending = Followup.objects.filter(
+            inquiry=inquiry, status='Pending'
+        ).order_by('-id').first()
+
+        if not inquiry.followUpDate:
+            if pending:
+                pending.delete()
+            return
+
+        if pending:
+            pending.date = inquiry.followUpDate
+            pending.callerName = inquiry.callerName
+            pending.company = inquiry.company
+            pending.batch = inquiry.batch    
+            pending.assignedOperator = inquiry.operator
+            pending.save()
+        else:
+            Followup.objects.create(
+                inquiry=inquiry,
+                callerName=inquiry.callerName,
+                date=inquiry.followUpDate,
+                reminder=True,
+                assignedOperator=inquiry.operator,
+                status='Pending',
+                notes='',
+                company=inquiry.company,
+                batch=inquiry.batch,
+                guideName='',
+            )
 
     def create(self, validated_data):
         follow_up_raw = validated_data.pop('followUpDate', '')
         resolved_raw = validated_data.pop('resolvedDate', '')
-        validated_data['followUpDate'] = parse_date(follow_up_raw) if follow_up_raw else None
-        validated_data['resolvedDate'] = parse_date(resolved_raw) if resolved_raw else None
-        # 'operator' arrives here via serializer.save(operator=...) in the view — never from request.data.
-        return Inquiry.objects.create(**validated_data)
+
+        validated_data['followUpDate'] = (
+            parse_date(follow_up_raw)
+            if follow_up_raw
+            else None
+        )
+
+        validated_data['resolvedDate'] = (
+            parse_date(resolved_raw)
+            if resolved_raw
+            else None
+        )
+
+        # operator arrives via serializer.save(operator=...)
+        # in InquiryListCreateView.
+        inquiry = Inquiry.objects.create(**validated_data)
+
+        # Automatically create the linked Followup if a date was supplied.
+        self._sync_followup(inquiry)
+
+        return inquiry
 
     def update(self, instance, validated_data):
-        if 'followUpDate' in validated_data:
+        follow_up_was_supplied = 'followUpDate' in validated_data
+
+        if follow_up_was_supplied:
             raw = validated_data.pop('followUpDate')
-            instance.followUpDate = parse_date(raw) if raw else None
+
+            instance.followUpDate = (
+                parse_date(raw)
+                if raw
+                else None
+            )
+
         if 'resolvedDate' in validated_data:
             raw = validated_data.pop('resolvedDate')
-            instance.resolvedDate = parse_date(raw) if raw else None
+
+            instance.resolvedDate = (
+                parse_date(raw)
+                if raw
+                else None
+            )
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+
         instance.save()
+
+        # Synchronize the linked Followup whenever the Inquiry is edited.
+        #
+        # We also do this when followUpDate wasn't part of the PATCH because
+        # caller/company/batch/status/etc. may have changed and the Followup
+        # stores copies of some Inquiry fields.
+        self._sync_followup(instance)
+
         return instance
 # =============================================================================
 # Followups  (§3)
@@ -292,20 +402,23 @@ class FollowupSerializer(serializers.ModelSerializer):
 
     def validate_status(self, value):
         if self.instance is None:
-            # Creating — reject anything other than "Pending" (or blank,
-            # which create() below fills in) rather than silently
-            # honoring a client-supplied status.
+            # New follow-ups always start as Pending.
             if value and value != 'Pending':
                 raise serializers.ValidationError(
                     "New follow-ups always start as 'Pending' — status is set server-side."
                 )
         else:
-            # Updating — only the three settable outcomes are valid;
-            # never back to "Pending".
+            # When editing an existing Pending follow-up, allow Pending
+            # to remain unchanged. This is necessary when editing its date
+            # or notes without changing the follow-up outcome.
+            if value == self.instance.status:
+                return value
+
             if value not in FOLLOWUP_SETTABLE_STATUSES:
                 raise serializers.ValidationError(
                     f"status must be one of: {', '.join(FOLLOWUP_SETTABLE_STATUSES)}"
                 )
+
         return value
 
     def _resolve_inquiry(self, inquiry_id):
