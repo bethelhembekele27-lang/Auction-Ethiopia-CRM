@@ -12,3 +12,7 @@ export function createFollowup(data) {
 export function updateFollowup(id, data) {
   return api.patch(`/followups/${id}`, data);
 }
+
+export function deleteFollowup(id) {
+  return api.delete(`/followups/${id}`);
+}

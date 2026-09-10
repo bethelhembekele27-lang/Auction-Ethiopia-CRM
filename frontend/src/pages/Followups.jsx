@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useConfirm } from "../hooks/useConfirm";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { FOLLOWUP_STATUSES, FOLLOWUP_STAMP } from "../constants/lookups";
 import { fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
@@ -26,7 +28,7 @@ export default function Followups({
   const [bulkError, setBulkError] = useState("");
 
   const sel = useRowSelection((f) => f.id);
-
+  const { pending, confirm, cancel, run } = useConfirm();
   const companyOptions = useMemo(
     () => [
       ...new Set(
@@ -81,6 +83,46 @@ export default function Followups({
     if (rows.length === 1) {
       openEdit(rows[0]);
     }
+  }
+  async function deleteSelected() {
+    const rows = sel.selectedFrom(sorted);
+
+    if (!rows.length) return;
+
+    confirm(
+      rows.length === 1
+        ? `Delete follow-up ${rows[0].id} permanently?`
+        : `Delete ${rows.length} selected follow-ups permanently?`,
+      async () => {
+        try {
+          await Promise.all(
+            rows.map((f) => followupsApi.deleteFollowup(f.id))
+          );
+
+          setFollowups((current) =>
+            current.filter(
+              (f) => !rows.some((selected) => selected.id === f.id)
+            )
+          );
+
+          rows.forEach((f) =>
+            addAudit(
+              "Delete follow-up",
+              `${f.status} · ${f.date || "No date"}`,
+              "Deleted",
+              `${f.id} · ${f.callerName}`
+            )
+          );
+
+          sel.clear();
+        } catch (err) {
+          setBulkError(
+            err.body?.message ||
+            "Couldn't delete one or more follow-ups — try again."
+          );
+        }
+      }
+    );
   }
 
   async function save() {
@@ -269,6 +311,14 @@ export default function Followups({
             onClick={() => bulkSetStatus("No Show")}
           >
             Mark No Show
+          </button>
+
+          <button
+            className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={!sel.selectedCount}
+            onClick={deleteSelected}
+          >
+            Delete
           </button>
         </BulkActionBar>
       )}
@@ -484,6 +534,11 @@ export default function Followups({
           </>
         )}
       </Modal>
+      <ConfirmDialog
+        pending={pending}
+        onCancel={cancel}
+        onConfirm={run}
+      />
     </div>
   );
 }

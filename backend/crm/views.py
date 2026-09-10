@@ -566,8 +566,8 @@ class FollowupListCreateView(APIView):
 
 class FollowupDetailView(APIView):
     """
-    PATCH /api/followups/<publicId>/ — typically { status, notes }.
-    No GET-by-id in the spec, so only PATCH is implemented here.
+    PATCH /api/followups/<publicId>/ — update a follow-up.
+    DELETE /api/followups/<publicId>/ — delete a follow-up.
     """
     permission_classes = [IsAuthenticated]
 
@@ -575,18 +575,63 @@ class FollowupDetailView(APIView):
         try:
             followup = Followup.objects.get(publicId=followup_id)
         except Followup.DoesNotExist:
-            return Response({'message': 'Follow-up not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'message': 'Follow-up not found.'},
+                status=http_status.HTTP_404_NOT_FOUND
+            )
 
         prev_status = followup.status
-        serializer = FollowupSerializer(followup, data=request.data, partial=True)
+        serializer = FollowupSerializer(
+            followup,
+            data=request.data,
+            partial=True
+        )
         serializer.is_valid(raise_exception=True)
         updated = serializer.save()
 
         if prev_status != updated.status:
-            log_audit(request, 'Update follow-up', prev_status, updated.status, f'{updated.publicId} · {updated.callerName}')
+            log_audit(
+                request,
+                'Update follow-up',
+                prev_status,
+                updated.status,
+                f'{updated.publicId} · {updated.callerName}'
+            )
 
         return Response(FollowupSerializer(updated).data)
 
+    def delete(self, request, followup_id):
+        try:
+            followup = Followup.objects.get(publicId=followup_id)
+        except Followup.DoesNotExist:
+            return Response(
+                {'message': 'Follow-up not found.'},
+                status=http_status.HTTP_404_NOT_FOUND
+            )
+
+        public_id = followup.publicId
+        caller_name = followup.callerName
+        followup_date = followup.date
+
+        followup.delete()
+
+        log_audit(
+            request,
+            'Delete follow-up',
+            'Existing',
+            'Deleted',
+            f'{public_id} · {caller_name}'
+        )
+
+        return Response(
+            {
+                'message': 'Follow-up deleted successfully.',
+                'publicId': public_id,
+                'callerName': caller_name,
+                'date': followup_date.isoformat() if followup_date else None,
+            },
+            status=http_status.HTTP_200_OK
+        )
 
 # =============================================================================
 # Visit Setups  (§6)
