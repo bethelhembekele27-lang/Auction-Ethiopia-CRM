@@ -75,10 +75,17 @@ export default function Login({ onLogin }) {
     try {
       const { token, user } = await auth.loginWithGoogle(response.credential);
       sessionStorage.setItem("auth_token", token);
-      sessionStorage.setItem("auth_user", JSON.stringify({ username: user.username, role: user.role, operatorName: user.operatorName || null }));
+      sessionStorage.setItem(
+        "auth_user",
+        JSON.stringify({
+          username: user.username,
+          role: user.role,
+          operatorName: user.operatorName || null
+        })
+      );
       onLogin(user.role, user.username, user.operatorName || null);
     } catch (err) {
-      setError(err.body?.message || "Google sign-in failed — this account may not be linked to an employee record.");
+      setError("Invalid Google account. Please use a registered account.");
     } finally {
       setGoogleLoading(false);
     }
