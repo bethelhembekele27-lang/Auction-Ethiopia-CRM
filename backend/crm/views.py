@@ -624,15 +624,8 @@ class FollowupDetailView(APIView):
         )
 
         return Response(
-            {
-                'message': 'Follow-up deleted successfully.',
-                'publicId': public_id,
-                'callerName': caller_name,
-                'date': followup_date.isoformat() if followup_date else None,
-            },
-            status=http_status.HTTP_200_OK
+            status=http_status.HTTP_204_NO_CONTENT
         )
-
 # =============================================================================
 # Visit Setups  (§6)
 # =============================================================================
