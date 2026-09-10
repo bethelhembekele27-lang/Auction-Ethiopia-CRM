@@ -50,6 +50,20 @@ async function openAttachment(att) {
     alert("Couldn't open this attachment. Please try again.");
   }
 }
+  function toDateTimeLocalValue(value) {
+    if (!value) return "";
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) return "";
+
+    const pad = (n) => String(n).padStart(2, "0");
+
+    return (
+      `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+      `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+    );
+  }
 const emptyInquiry = {
   id: "", callerName: "", phone: "", company: "", auction: "", batch: "", category: CATEGORIES[0],
   priority: "Medium", operator: "", dateTime: "", description: "", status: "Open",
@@ -182,13 +196,30 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
 
   function openNew() {
     setEditing(null);
-    setDraft({ ...emptyInquiry, dateTime: new Date().toISOString().slice(0, 16) });
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+
+    const localDateTime =
+      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+      `T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+    setDraft({
+      ...emptyInquiry,
+      dateTime: localDateTime,
+    });
+
     setSaveError("");
     setModalOpen(true);
   }
   function openEdit(i) {
     setEditing(i.id);
-    setDraft({ ...i });  
+
+    setDraft({
+      ...i,
+      dateTime: toDateTimeLocalValue(i.dateTime),
+    });
+
     setSaveError("");
     setModalOpen(true);
   }
