@@ -174,6 +174,7 @@ def resolve_pass(token: str) -> dict:
         subject_data = {
             'visitorName': appt.visitorName, 'phone': appt.phone,
             'company': appt.company, 'auction': appt.auction, 'batch': appt.batch,
+            'items': appt.items,
             'visitDate': appt.visitDate.isoformat(), 'visitTime': appt.visitTime.strftime('%H:%M'),
             'address': appt.address, 'mapsLink': appt.mapsLink,
             'guideName': appt.guideName, 'guidePhone': appt.guidePhone,
