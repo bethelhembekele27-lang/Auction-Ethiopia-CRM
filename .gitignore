@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 .env.*
+
+0001-verification-notification-phase-1.patch
