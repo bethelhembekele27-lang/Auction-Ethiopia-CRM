@@ -117,6 +117,12 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "EXCEPTION_HANDLER": "crm.exceptions.api_exception_handler",
+    # Phase 2: the /pass/ endpoints are the only AllowAny (unauthenticated)
+    # routes in this API — throttle anonymous requests so they can't be
+    # brute-forced or hammered. Authenticated routes are unaffected since
+    # DRF only applies AnonRateThrottle to unauthenticated requests.
+    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
+    "DEFAULT_THROTTLE_RATES": {"anon": "30/minute"},
 }
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 

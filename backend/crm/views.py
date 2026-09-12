@@ -8,6 +8,7 @@ from .permissions import has_any_role
 from .models import (
     Employee, Inquiry, PERMISSIONS, Role, Followup, VisitSetup,
     Appointment, Complaint, Escalation, AuditLog,InquiryAttachment,PushSubscription,
+    PartyVerification,
 )
 from .serializers import (
     EmployeeCreateSerializer,
@@ -36,7 +37,10 @@ from rest_framework.parsers import MultiPartParser
 from django.shortcuts import get_object_or_404
 import os
 from .push import send_push_to_user
-from .verification import create_verification, build_visitation_messages, send_and_log
+from .verification import (
+    create_verification, build_visitation_messages, send_and_log,
+    resolve_pass, verify_token, VerificationError,
+)
 # =============================================================================
 # Shared helpers
 # =============================================================================
@@ -1092,3 +1096,57 @@ class TriggerFollowupRemindersView(APIView):
         from django.core.management import call_command
         call_command('send_followup_reminders')
         return Response({'message': 'Reminders sent.'})
+
+
+# =============================================================================
+# Verification & Notification — Phase 2 (public pass pages)
+# =============================================================================
+
+class PassResolveView(APIView):
+    """
+    GET /api/pass/<token>/ — PUBLIC. Resolves a visitor/guide token to
+    that party's display payload (see verification.resolve_pass). No
+    auth — the token itself is the credential (opaque, unguessable,
+    time-limited), same trust model as a password-reset link.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        try:
+            data = resolve_pass(token)
+        except VerificationError as e:
+            return Response({'message': str(e)}, status=http_status.HTTP_404_NOT_FOUND)
+        return Response(data)
+
+
+class PassVerifyView(APIView):
+    """
+    POST /api/pass/verify/ — PUBLIC. { scannedToken, ownToken, ownRole }.
+    Marks the OTHER party (relative to ownRole) as verified. Logs one
+    AuditLog entry the same way every other state-changing view does,
+    even though the caller isn't authenticated — performedBy is left
+    null (log_audit reads request.user, which is AnonymousUser here;
+    that's fine, AuditLog.performedBy is nullable for exactly this kind
+    of system-triggered/public entry).
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        scanned = request.data.get('scannedToken', '')
+        own_token = request.data.get('ownToken', '')
+        own_role = request.data.get('ownRole', '')
+        try:
+            result = verify_token(scanned, own_token, own_role, ip=request.META.get('REMOTE_ADDR'))
+        except VerificationError as e:
+            return Response({'message': str(e)}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        AuditLog.objects.create(
+            performedBy=request.user if request.user.is_authenticated else None,
+            userRole='',
+            action=f'Verify {result["verifiedRole"]} QR',
+            previousValue='—',
+            newValue=result['subjectId'],
+            reason='Verified at public pass link',
+            ipAddress=request.META.get('REMOTE_ADDR'),
+        )
+        return Response(result)

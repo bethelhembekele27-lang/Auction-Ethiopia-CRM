@@ -31,6 +31,8 @@ from .views import (
     PushUnsubscribeView,
     VapidPublicKeyView,
     TriggerFollowupRemindersView,
+    PassResolveView,
+    PassVerifyView,
 )
 
 urlpatterns = [
@@ -78,4 +80,8 @@ urlpatterns = [
     path('push/unsubscribe/', PushUnsubscribeView.as_view(), name='push-unsubscribe'),
     path('push/vapid-public-key/', VapidPublicKeyView.as_view(), name='push-vapid-key'),
     path('internal/send-followup-reminders/', TriggerFollowupRemindersView.as_view(), name='trigger-followup-reminders'),
+
+    # Phase 2 — public pass pages (no auth; token/code is the credential)
+    path('pass/verify/', PassVerifyView.as_view(), name='pass-verify'),
+    path('pass/<str:token>/', PassResolveView.as_view(), name='pass-resolve'),
 ]
