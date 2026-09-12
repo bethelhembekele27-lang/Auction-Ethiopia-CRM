@@ -6,7 +6,7 @@ import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSe
 import { useRowSelection } from "../hooks/useRowSelection";
 import { isSetupOpen } from "./VisitSetups";
 import { appointments as appointmentsApi, followups as followupsApi } from "../api";
-import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
+import { EditIcon, DeleteIcon, PlusIcon, CheckIcon, SendIcon } from "../components/icons";
 import { useConfirm } from "../hooks/useConfirm";
 import AutoCompleteField from "../components/AutoCompleteField";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -17,6 +17,7 @@ export const emptyAppt = {
   id: "", auction: "", visitorName: "", phone: "", company: "",
   visitDate: "", visitTime: "", assignedStaff: "", status: "Requested", notes: "",
   setupId: "", batch: "", guideName: "", guidePhone: "", address: "", items: "",
+  mapsLink: "",
 };
 
 const WHEN_PRESETS = [
@@ -42,6 +43,30 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   const [viewMode, setViewMode] = useState("list"); // "list" | "calendar"
   const sel = useRowSelection((a) => a.id);
   const { pending, confirm, cancel, run } = useConfirm();
+
+  // Manual "Send confirmation" trigger (visitor + guide SMS) — never
+  // fired automatically on create/edit, per product decision.
+  const [confirmSending, setConfirmSending] = useState(false);
+  const [confirmNotice, setConfirmNotice] = useState(null); // { kind: 'ok'|'error', text }
+
+  async function sendConfirmationFor(a) {
+    setConfirmSending(true);
+    setConfirmNotice(null);
+    try {
+      const res = await appointmentsApi.sendConfirmation(a.id);
+      const guidePart = res.guide ? `, guide ${res.guide.status}` : ", no guide phone on file — guide SMS skipped";
+      addAudit("Send visitation confirmation", "—", a.id, `${a.visitorName} · visitor ${res.visitor.status}${guidePart}`);
+      setConfirmNotice({ kind: "ok", text: `Confirmation sent for ${a.id} — visitor ${res.visitor.status}${guidePart}.` });
+    } catch (err) {
+      setConfirmNotice({ kind: "error", text: err.body?.message || "Couldn't send confirmation — try again." });
+    } finally {
+      setConfirmSending(false);
+    }
+  }
+  function sendConfirmationSelected() {
+    const rows = sel.selectedFrom(sorted);
+    if (rows.length === 1) sendConfirmationFor(rows[0]);
+  }
 
   async function bulkDelete() {
     const rows = sel.selectedFrom(sorted);
@@ -211,6 +236,9 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
             <EditIcon /><span>Edit</span>
           </button>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1 || confirmSending} onClick={sendConfirmationSelected} title="Sends the visitor + guide SMS with their visit pass links">
+            <SendIcon /><span>{confirmSending ? "Sending…" : "Send confirmation"}</span>
+          </button>
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--blue)] bg-[color:var(--blue-bg)] text-[color:var(--blue)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Confirmed")}>
             <CheckIcon /><span>Mark Confirmed</span>
           </button>
@@ -228,6 +256,16 @@ export default function Visitations({ appointments, setAppointments, visitSetups
         </BulkActionBar>
       )}
       {bulkError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>{bulkError}</div>}
+      {confirmNotice && (
+        <div
+          className={confirmNotice.kind === "ok"
+            ? "bg-[color:var(--green-bg)] text-[color:var(--green)] text-[12.5px] px-3 py-2 rounded-md"
+            : "bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md"}
+          style={{ marginBottom: 12 }}
+        >
+          {confirmNotice.text}
+        </div>
+      )}
 
       {viewMode === "calendar" ? (
         <MonthCalendar
@@ -285,6 +323,9 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           </Field>
           <Field label="Visit date"><input type="date" className={inputCls} value={draft.visitDate} onChange={(e) => setDraft({ ...draft, visitDate: e.target.value })} /></Field>
           <Field label="Visit time"><input type="time" className={inputCls} value={draft.visitTime} onChange={(e) => setDraft({ ...draft, visitTime: e.target.value })} /></Field>
+          <Field label="Google Maps link (optional)" full>
+            <input className={inputCls} placeholder="https://maps.google.com/…" value={draft.mapsLink} onChange={(e) => setDraft({ ...draft, mapsLink: e.target.value })} />
+          </Field>
           {editing && (
             <Field label="Status"><select className={inputCls} value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>{APPT_STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
           )}

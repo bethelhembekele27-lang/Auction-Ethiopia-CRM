@@ -42,6 +42,11 @@ DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 COMPLAINT_STATUSES = ["Open", "Resolved"]
 ESCALATION_STATUSES = ["Open", "Resolved"]
 EMPLOYEE_STATUSES = ["Active", "Inactive"]
+PICKUP_STATUSES = ["Scheduled", "Completed", "Cancelled", "No Show"]
+
+# Verification & Notification feature — shared between the visitation and
+# pickup workflows so the QR/token/audit logic is never duplicated.
+VERIFICATION_SUBJECT_TYPES = ["visitation", "pickup"]
 
 # Role slugs the frontend hardcodes permission checks against (constants/roles.js).
 # Custom roles created later via POST /roles can use any other slug.
@@ -281,6 +286,10 @@ class Appointment(models.Model):
     guidePhone = models.CharField(max_length=20, blank=True, default='')
     address = models.CharField(max_length=300, blank=True, default='')
     items = models.TextField(blank=True, default='')
+    # Verification & Notification feature (visitation phase) — optional
+    # Google Maps link shown alongside the free-text `address` on SMS
+    # confirmations and the visitor pass page.
+    mapsLink = models.URLField(blank=True, default='')
 
     createdAt = models.DateTimeField(auto_now_add=True)
 
@@ -414,3 +423,116 @@ class PushSubscription(models.Model):
 
     def __str__(self):
         return f"PushSubscription({self.user.username})"
+
+
+# =============================================================================
+# Pickup  (Verification & Notification feature, phase 4 — model added now
+# per the phase-1 migration list so nothing later blocks on a schema
+# change. NOT exposed via any view/serializer until phase 4.)
+# =============================================================================
+
+class Pickup(models.Model):
+    """
+    Post-auction item pickup — structurally similar to Appointment/
+    VisitSetup (free-text guide, denormalized address/maps link) but for
+    a paid winner collecting their item rather than a pre-bid viewing.
+
+    paymentReference is plain free text for now — API_SPEC has no PFM
+    integration yet, and the project owner has explicitly deferred that
+    (see project handoff doc: PFM Excel import is future scope). Whoever
+    builds the eventual bulk-import path should call create_pickup() in
+    crm/verification.py rather than duplicating this model's side effects.
+    """
+    publicId = models.CharField(max_length=20, unique=True, editable=False)
+
+    winnerName = models.CharField(max_length=150)
+    phone = models.CharField(max_length=20)
+    auction = models.CharField(max_length=300, blank=True, default='')
+    itemDescription = models.TextField(blank=True, default='')
+    quantity = models.CharField(max_length=50, blank=True, default='')
+    paymentReference = models.CharField(max_length=100, blank=True, default='')
+
+    pickupDate = models.DateField()
+    pickupTime = models.TimeField()
+
+    guideName = models.CharField(max_length=150, blank=True, default='')
+    guidePhone = models.CharField(max_length=20, blank=True, default='')
+    address = models.CharField(max_length=300, blank=True, default='')
+    mapsLink = models.URLField(blank=True, default='')
+
+    status = models.CharField(max_length=15, choices=[(s, s) for s in PICKUP_STATUSES], default='Scheduled')
+
+    createdBy = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name='pickups')
+    createdAt = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.publicId:
+            self.publicId = next_public_id(Pickup, 'PCK')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.publicId} — {self.winnerName}"
+
+
+# =============================================================================
+# PartyVerification  (Verification & Notification feature)
+# =============================================================================
+# One reusable engine for both the visitation and pickup workflows — the
+# QR/token/expiry/mutual-verification logic never needs to exist twice.
+#
+# `subjectId` is a plain string (Appointment.publicId or Pickup.publicId),
+# not a real FK — same soft-reference precedent as Complaint.inquiryId
+# elsewhere in this codebase. Chosen over GenericForeignKey/two nullable
+# FKs because it keeps the model boring and matches this project's
+# existing convention rather than introducing a new pattern for one
+# feature.
+
+class PartyVerification(models.Model):
+    subjectType = models.CharField(max_length=20, choices=[(s, s) for s in VERIFICATION_SUBJECT_TYPES])
+    subjectId = models.CharField(max_length=20)
+
+    # secrets.token_urlsafe(32) — see crm/verification.py::create_verification
+    visitorToken = models.CharField(max_length=64, unique=True)
+    guideToken = models.CharField(max_length=64, unique=True)
+
+    # 6-digit fallback codes for manual entry if camera scanning fails on-site
+    visitorCode = models.CharField(max_length=6)
+    guideCode = models.CharField(max_length=6)
+
+    # Mutual verification — the guide confirms the visitor's identity AND
+    # the visitor can optionally confirm the guide's, independently.
+    visitorVerifiedAt = models.DateTimeField(null=True, blank=True)
+    guideVerifiedAt = models.DateTimeField(null=True, blank=True)
+    visitorVerifiedByIp = models.GenericIPAddressField(null=True, blank=True)
+    guideVerifiedByIp = models.GenericIPAddressField(null=True, blank=True)
+
+    expiresAt = models.DateTimeField()
+    createdAt = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"PartyVerification({self.subjectType}:{self.subjectId})"
+
+
+# =============================================================================
+# NotificationLog  (Verification & Notification feature)
+# =============================================================================
+# Delivery-attempt audit trail — deliberately separate from AuditLog, which
+# tracks *operator actions* (who clicked what). This tracks *SMS attempts*
+# (what was sent, to whom, and whether the provider accepted it), which is
+# a different axis of history and would clutter/skew AuditLog if merged in.
+
+class NotificationLog(models.Model):
+    subjectType = models.CharField(max_length=20)
+    subjectId = models.CharField(max_length=20)
+    recipientRole = models.CharField(max_length=20)  # "visitor" / "guide"
+    recipientPhone = models.CharField(max_length=20)
+    messageBody = models.TextField()
+    status = models.CharField(max_length=20)  # "sent" / "failed"
+    providerResponse = models.TextField(blank=True, default='')
+    sentAt = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-sentAt']
+
+    def __str__(self):
+        return f"NotificationLog({self.subjectType}:{self.subjectId} -> {self.recipientRole}, {self.status})"

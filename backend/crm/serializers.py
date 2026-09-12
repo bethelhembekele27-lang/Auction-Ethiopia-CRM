@@ -644,6 +644,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'id', 'auction', 'visitorName', 'phone', 'company',
             'visitDate', 'visitTime', 'assignedStaff', 'status', 'notes',
             'setupId', 'batch', 'guideName', 'guidePhone', 'address', 'items',
+            'mapsLink',
         ]
 
     def to_representation(self, instance):

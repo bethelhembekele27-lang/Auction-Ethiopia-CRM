@@ -16,6 +16,7 @@ from .views import (
     VisitSetupDetailView,
     AppointmentListCreateView,
     AppointmentDetailView,
+    AppointmentSendConfirmationView,
     ComplaintListCreateView,
     ComplaintDetailView,
     EscalationListCreateView,
@@ -57,6 +58,7 @@ urlpatterns = [
 
     path('appointments', AppointmentListCreateView.as_view(), name='appointment-list-create'),
     path('appointments/<str:appointment_id>', AppointmentDetailView.as_view(), name='appointment-detail'),
+    path('appointments/<str:appointment_id>/send-confirmation/', AppointmentSendConfirmationView.as_view(), name='appointment-send-confirmation'),
 
     path('complaints', ComplaintListCreateView.as_view(), name='complaint-list-create'),
     path('complaints/<str:complaint_id>', ComplaintDetailView.as_view(), name='complaint-detail'),

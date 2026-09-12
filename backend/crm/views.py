@@ -36,6 +36,7 @@ from rest_framework.parsers import MultiPartParser
 from django.shortcuts import get_object_or_404
 import os
 from .push import send_push_to_user
+from .verification import create_verification, build_visitation_messages, send_and_log
 # =============================================================================
 # Shared helpers
 # =============================================================================
@@ -760,6 +761,51 @@ class AppointmentDetailView(APIView):
         appt.delete()
         log_audit(request, 'Delete visitation', f'{pid} · {name}', '—', 'Permanently removed')
         return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+
+class AppointmentSendConfirmationView(APIView):
+    """
+    POST /api/appointments/<id>/send-confirmation/
+
+    Manual trigger only — per the project handoff, confirmations are
+    NEVER sent automatically on Appointment creation. Open to every role
+    except viewer (viewers can't edit appointments at all, so they
+    shouldn't be able to trigger outbound SMS either).
+
+    Creates a fresh PartyVerification (invalidating any previous one for
+    this appointment — see create_verification()'s docstring), sends the
+    visitor SMS unconditionally, and the guide SMS only if a guide phone
+    is on file. Every attempt is logged to NotificationLog regardless of
+    success/failure (see verification.send_and_log), and one AuditLog
+    entry is written summarizing the outcome, matching how every other
+    state-changing view in this file logs to AuditLog.
+    """
+    permission_classes = [IsAuthenticated, has_any_role('administrator', 'call_operator', 'auction_manager')]
+
+    def post(self, request, appointment_id):
+        try:
+            appointment = Appointment.objects.get(publicId=appointment_id)
+        except Appointment.DoesNotExist:
+            return Response({'message': 'Appointment not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        verification = create_verification('visitation', appointment.publicId)
+        visitor_message, guide_message = build_visitation_messages(appointment, verification)
+
+        visitor_log = send_and_log('visitation', appointment.publicId, 'visitor', appointment.phone, visitor_message)
+
+        guide_log = None
+        if appointment.guidePhone:
+            guide_log = send_and_log('visitation', appointment.publicId, 'guide', appointment.guidePhone, guide_message)
+
+        summary = f'{appointment.visitorName} · visitor {visitor_log.status}'
+        summary += f', guide {guide_log.status}' if guide_log else ', no guide phone on file — guide SMS skipped'
+        log_audit(request, 'Send visitation confirmation', '—', appointment.publicId, summary)
+
+        return Response({
+            'message': 'Confirmation sent.',
+            'visitor': {'status': visitor_log.status, 'detail': visitor_log.providerResponse},
+            'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
+        })
 
 
 # =============================================================================
