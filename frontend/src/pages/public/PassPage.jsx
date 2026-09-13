@@ -27,27 +27,24 @@ export default function PassPage({ token }) {
       .catch((e) => setError(e.body?.message || "This link is invalid or has expired."));
   }, [token]);
 
-  // Passive refresh — the party being scanned (usually the visitor)
-  // never takes an action of their own, so without this their screen
-  // would sit on the scan prompt forever even after the guide has
-  // already verified them. Polling every 8s is cheap and well under
-  // the anon-endpoint throttle (30/min).
-  useEffect(() => {
-    if (error) return;
-    const t = setInterval(() => {
-      getPass(token).then(setData).catch(() => {});
-    }, 8000);
-    return () => clearInterval(t);
-  }, [token, error]);
-
   // QR generation notes (fixes the "speckled/dotted" look reported on
   // both phone and desktop): generate at the EXACT display size, with a
   // proper quiet-zone margin and a fixed dark/light palette, and disable
   // browser smoothing on the <img> itself (imageRendering: 'pixelated').
   const QR_SIZE = 196;
   useEffect(() => {
-    if (data?.ownToken) {
-      QRCode.toDataURL(data.ownToken, {
+    if (data?.ownToken && data?.role) {
+      // Encode a full URL, not a bare token — a bare token means nothing
+      // to a phone's stock camera app (nothing to tap/open), so anyone
+      // who doesn't already know to use this page's own "Open camera"
+      // scanner gets a dead end. Encoding the real pass-page URL means
+      // a stock camera at least offers a working link to open (landing
+      // on the scanned party's own pass, which is still a legitimate
+      // visual-match fallback), while extractToken() below keeps the
+      // in-app scanner working exactly as before either way.
+      const rolePath = data.role === "visitor" ? "v" : "g";
+      const passUrl = `${window.location.origin}/${rolePath}/${data.ownToken}`;
+      QRCode.toDataURL(passUrl, {
         width: QR_SIZE,
         margin: 2,
         errorCorrectionLevel: "M",
@@ -58,9 +55,18 @@ export default function PassPage({ token }) {
     }
   }, [data]);
 
+  // Accepts either a bare token (older QR / manual 6-digit path) or a
+  // full pass URL (new QR format) and returns just the token part, so
+  // the in-app scanner works regardless of which format it decodes.
+  function extractToken(raw) {
+    const trimmed = (raw || "").trim();
+    const match = trimmed.match(/\/(?:v|g)\/([^/?#]+)/);
+    return match ? match[1] : trimmed;
+  }
+
   async function submitScan(scannedValue) {
     try {
-      const res = await verifyPass({ scannedToken: scannedValue, ownToken: token, ownRole: data.role });
+      const res = await verifyPass({ scannedToken: extractToken(scannedValue), ownToken: token, ownRole: data.role });
       setVerifyMsg(`${res.verifiedRole === "guide" ? "Guide" : "Visitor"} verified successfully.`);
       const refreshed = await getPass(token);
       setData(refreshed);
@@ -310,18 +316,9 @@ export default function PassPage({ token }) {
 
           <div className="relative z-10 h-px bg-[color:var(--border)] mb-6" />
 
-          {/* Verification status / scanner.
-              - The stamp shows once EITHER direction is done — "I
-                scanned them" (otherVerified) or "they scanned me"
-                (ownVerified) both mean this visit is checked in.
-              - The scan/manual-entry option is shown independently,
-                whenever otherVerified is still false — even after
-                ownVerified flips true — since mutual verification is
-                optional, not required, and someone who's already been
-                confirmed shouldn't lose the ability to confirm the
-                other party back if they want to. */}
+          {/* Verification status / scanner */}
           <div className="relative z-10">
-          {(data.otherVerified || data.ownVerified) && (
+          {data.otherVerified ? (
             <div className="relative flex items-center gap-4 bg-[color:var(--green-bg)] rounded-xl py-4 px-5 overflow-hidden">
               <img
                 src={stamp}
@@ -330,22 +327,14 @@ export default function PassPage({ token }) {
                 style={{ transform: "rotate(-9deg)", filter: "drop-shadow(0 2px 3px rgba(20,23,28,0.18))" }}
               />
               <div className="text-left">
-                <div className="text-[14px] font-semibold text-[color:var(--text)]">
-                  {data.otherVerified ? `${otherRoleLabel} confirmed` : "You're verified"}
-                </div>
-                <div className="text-[12px] text-[color:var(--text-2)] mt-0.5">
-                  {data.otherVerified
-                    ? "Identity verified on-site."
-                    : `Your identity was confirmed by the ${otherRoleLabel.toLowerCase()}.`}
-                </div>
+                <div className="text-[14px] font-semibold text-[color:var(--text)]">{otherRoleLabel} confirmed</div>
+                <div className="text-[12px] text-[color:var(--text-2)] mt-0.5">Identity verified on-site.</div>
               </div>
             </div>
-          )}
-
-          {!data.otherVerified && (
-            <div className={data.ownVerified ? "mt-4" : ""}>
+          ) : (
+            <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[color:var(--text-2)] mb-3 text-center">
-                {data.ownVerified ? `Optional — also verify the ${otherRoleLabel.toLowerCase()}` : `Scan the ${otherRoleLabel.toLowerCase()}'s code`}
+                Scan the {otherRoleLabel.toLowerCase()}'s code
               </div>
 
               {!scanning ? (
