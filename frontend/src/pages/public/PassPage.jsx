@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import QRCode from "qrcode";
 import { Html5Qrcode } from "html5-qrcode";
 import { getPass, verifyPass } from "../../api/verification";
-import { logo } from "../../constants/assets";
+import { logo, stamp } from "../../constants/assets";
 
 // Serves BOTH /v/:token (visitor) and /g/:token (guide) — the payload's
 // `role` field (set server-side from which token matched) tells this
@@ -88,38 +88,33 @@ export default function PassPage({ token }) {
   }
 
   /* ============================================================
-     ICONS — small, inline, single-color (currentColor) so they pick
-     up whatever text color wraps them. Kept local to this file since
-     they're specific to pass-page details (calendar/clock/box/tag/etc)
-     and aren't reused elsewhere in the CRM yet.
+     ICONS — small, inline, single-color (currentColor). Kept
+     neutral/gray in the detail rows on purpose (see redesign notes
+     below) — brass is reserved for the avatar, links, and buttons so
+     it still reads as *the* accent color instead of decorating every
+     row equally and flattening the hierarchy.
   ============================================================ */
   const ic = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
   const MapPinIcon = (p) => (
     <svg width="13" height="13" viewBox="0 0 24 24" {...ic} {...p}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" /><circle cx="12" cy="10" r="3" /></svg>
   );
   const CalendarIcon = (p) => (
-    <svg width="15" height="15" viewBox="0 0 24 24" {...ic} {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" {...ic} {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>
   );
   const ClockIcon = (p) => (
-    <svg width="15" height="15" viewBox="0 0 24 24" {...ic} {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" {...ic} {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
   );
   const TagIcon = (p) => (
-    <svg width="15" height="15" viewBox="0 0 24 24" {...ic} {...p}><path d="M20.59 13.41 12 22 2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" /><circle cx="7" cy="7" r="1.3" fill="currentColor" stroke="none" /></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" {...ic} {...p}><path d="M20.59 13.41 12 22 2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" /><circle cx="7" cy="7" r="1.3" fill="currentColor" stroke="none" /></svg>
   );
   const BoxIcon = (p) => (
-    <svg width="15" height="15" viewBox="0 0 24 24" {...ic} {...p}><path d="M21 8 12 3 3 8v8l9 5 9-5Z" /><path d="M3 8l9 5 9-5M12 13v8" /></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" {...ic} {...p}><path d="M21 8 12 3 3 8v8l9 5 9-5Z" /><path d="M3 8l9 5 9-5M12 13v8" /></svg>
   );
   const UserIcon = (p) => (
-    <svg width="15" height="15" viewBox="0 0 24 24" {...ic} {...p}><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4.5 5-6 8-6s6.5 1.5 8 6" /></svg>
+    <svg width="14" height="14" viewBox="0 0 24 24" {...ic} {...p}><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4.5 5-6 8-6s6.5 1.5 8 6" /></svg>
   );
   const PhoneIcon = (p) => (
     <svg width="12" height="12" viewBox="0 0 24 24" {...ic} {...p}><path d="M5 4h4l1.5 5-2.5 1.5a13 13 0 0 0 6 6L15.5 14l5 1.5V19a2 2 0 0 1-2 2C10.5 21 3 13.5 3 6a2 2 0 0 1 2-2Z" /></svg>
-  );
-  const ShieldIcon = (p) => (
-    <svg width="14" height="14" viewBox="0 0 24 24" {...ic} {...p}><path d="M12 2l8 3.5v6C20 16.5 16.5 20.5 12 22 7.5 20.5 4 16.5 4 11.5v-6L12 2Z" /></svg>
-  );
-  const ShieldCheckIcon = (p) => (
-    <svg width="20" height="20" viewBox="0 0 24 24" {...ic} {...p}><path d="M12 2l8 3.5v6C20 16.5 16.5 20.5 12 22 7.5 20.5 4 16.5 4 11.5v-6L12 2Z" /><path d="m9 12 2 2 4-4" /></svg>
   );
   const CameraIcon = (p) => (
     <svg width="16" height="16" viewBox="0 0 24 24" {...ic} {...p}><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" /><circle cx="12" cy="14" r="3.5" /></svg>
@@ -148,34 +143,17 @@ export default function PassPage({ token }) {
     );
   }
 
-  // A real rubber-stamp-style badge — CSS only (no image asset needed).
-  // Used once verification succeeds, so the pass visually reads as
-  // "officially confirmed" rather than just a small colored pill.
-  function InkStamp({ label = "VERIFIED" }) {
-    return (
-      <div
-        className="inline-flex items-center justify-center select-none shrink-0"
-        style={{
-          width: 92, height: 92, borderRadius: "50%",
-          border: "3px solid var(--green)", transform: "rotate(-11deg)",
-          color: "var(--green)", boxShadow: "0 0 0 3px var(--green-bg)",
-        }}
-      >
-        <div className="text-center leading-tight">
-          <ShieldCheckIcon className="mx-auto mb-0.5" />
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em" }}>{label}</div>
-        </div>
-      </div>
-    );
-  }
-
+  // Detail rows use a NEUTRAL icon tile (paper bg + border), not brass —
+  // brass stays reserved for the avatar, links, and buttons. Uniformly
+  // tinting every row the brand color is what made the previous pass
+  // read as busy/decorative rather than clean.
   function DetailRow({ icon, label, value }) {
     if (!value) return null;
     return (
-      <div className="flex items-start gap-2.5 py-2 first:pt-0 last:pb-0">
-        <span className="mt-0.5 w-6 h-6 rounded-md bg-[color:var(--brass-bg)] text-[color:var(--brass-dark)] flex items-center justify-center shrink-0">{icon}</span>
+      <div className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0">
+        <span className="mt-0.5 w-7 h-7 rounded-md bg-[color:var(--paper)] border border-[color:var(--border)] text-[color:var(--text-3)] flex items-center justify-center shrink-0">{icon}</span>
         <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.05em] text-[color:var(--text-3)] mb-0.5">{label}</div>
+          <div className="text-[10px] uppercase tracking-[0.06em] text-[color:var(--text-3)] mb-0.5">{label}</div>
           <div className="text-[13.5px] text-[color:var(--text)] leading-[1.4] break-words">{value}</div>
         </div>
       </div>
@@ -210,19 +188,20 @@ export default function PassPage({ token }) {
   const s = data.subject;
   const isVisitor = data.role === "visitor";
   const otherRoleLabel = isVisitor ? "Guide" : "Visitor";
+  const visitorInitial = (s.visitorName || "?").trim().charAt(0).toUpperCase();
 
   return (
     <div className={shellCls}>
       <div className={cardCls}>
         {/* Brand accent bar */}
-        <div className="h-[6px] bg-gradient-to-r from-[color:var(--brass)] via-[color:var(--brass-dark)] to-[color:var(--brass)]" />
+        <div className="h-[6px] bg-[color:var(--brass)]" />
 
         {/* Header */}
         <div className="px-6 pt-6 pb-5 border-b border-[color:var(--border)] bg-[color:var(--paper)]">
           <div className="flex items-start justify-between gap-3 mb-4">
             <img src={logo} alt="Auction Ethiopia" className="h-9 w-auto" />
-            <span className="inline-flex items-center gap-1.5 font-mono font-semibold text-[10.5px] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full border border-[color:var(--brass)] text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)]">
-              <ShieldIcon /> {isVisitor ? "Visitor Pass" : "Guide Pass"}
+            <span className="inline-flex items-center font-mono font-semibold text-[10.5px] tracking-[0.06em] uppercase px-3 py-1.5 rounded-full text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)]">
+              {isVisitor ? "Visitor Pass" : "Guide Pass"}
             </span>
           </div>
           <h1 className="font-display text-[22px] font-semibold tracking-[-0.01em] text-[color:var(--text)] m-0">
@@ -237,8 +216,8 @@ export default function PassPage({ token }) {
         <div className="relative px-6 py-5 overflow-hidden">
           <div className="relative z-10 bg-[color:var(--paper)] border border-[color:var(--border)] rounded-xl p-4">
             <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[color:var(--border)]">
-              <div className="w-10 h-10 rounded-full bg-[color:var(--brass)] text-white flex items-center justify-center shrink-0">
-                <UserIcon />
+              <div className="w-10 h-10 rounded-full bg-[color:var(--brass)] text-white font-display font-semibold text-[15px] flex items-center justify-center shrink-0">
+                {visitorInitial}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[10px] uppercase tracking-[0.05em] text-[color:var(--text-3)]">
@@ -297,7 +276,7 @@ export default function PassPage({ token }) {
               <ClockIcon /> Your code
             </div>
             {qrDataUrl && (
-              <div className="inline-block p-3.5 bg-white border border-[color:var(--border)] rounded-xl shadow-[0_1px_3px_rgba(20,23,28,0.06)]">
+              <div className="inline-block p-3.5 bg-white border border-[color:var(--border)] rounded-xl">
                 <img
                   src={qrDataUrl}
                   alt="QR code"
@@ -321,8 +300,13 @@ export default function PassPage({ token }) {
           {/* Verification status / scanner */}
           <div className="relative z-10">
           {data.otherVerified ? (
-            <div className="flex items-center justify-center gap-4 bg-[color:var(--green-bg)] rounded-xl py-4 px-4">
-              <InkStamp />
+            <div className="relative flex items-center gap-4 bg-[color:var(--green-bg)] rounded-xl py-4 px-5 overflow-hidden">
+              <img
+                src={stamp}
+                alt="Auction Ethiopia — verified"
+                className="w-16 h-16 object-contain shrink-0"
+                style={{ transform: "rotate(-9deg)", filter: "drop-shadow(0 2px 3px rgba(20,23,28,0.18))" }}
+              />
               <div className="text-left">
                 <div className="text-[14px] font-semibold text-[color:var(--text)]">{otherRoleLabel} confirmed</div>
                 <div className="text-[12px] text-[color:var(--text-2)] mt-0.5">Identity verified on-site.</div>
@@ -337,7 +321,7 @@ export default function PassPage({ token }) {
               {!scanning ? (
                 <button
                   onClick={startScan}
-                  className="w-full font-sans text-[13.5px] font-semibold py-2.5 rounded-[8px] bg-[color:var(--brass)] text-white border border-[color:var(--brass)] cursor-pointer hover:bg-[color:var(--brass-dark)] hover:border-[color:var(--brass-dark)] shadow-[0_1px_2px_rgba(20,23,28,0.08)] transition-colors flex items-center justify-center gap-2"
+                  className="w-full font-sans text-[13.5px] font-semibold py-2.5 rounded-[8px] bg-[color:var(--brass)] text-white border border-[color:var(--brass)] cursor-pointer hover:bg-[color:var(--brass-dark)] hover:border-[color:var(--brass-dark)] transition-colors flex items-center justify-center gap-2"
                 >
                   <CameraIcon /> Open camera
                 </button>
@@ -369,7 +353,7 @@ export default function PassPage({ token }) {
                 <button
                   disabled={manualCode.length !== 6}
                   onClick={() => submitScan(manualCode)}
-                  className="font-sans text-[13.5px] font-semibold px-5 rounded-[8px] bg-[color:var(--brass)] text-white border border-[color:var(--brass)] cursor-pointer hover:bg-[color:var(--brass-dark)] disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_1px_2px_rgba(20,23,28,0.08)] transition-colors"
+                  className="font-sans text-[13.5px] font-semibold px-5 rounded-[8px] bg-[color:var(--brass)] text-white border border-[color:var(--brass)] cursor-pointer hover:bg-[color:var(--brass-dark)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Verify
                 </button>
@@ -380,7 +364,7 @@ export default function PassPage({ token }) {
           {verifyMsg && (
             <div
               className={
-                "mt-4 text-[13px] font-medium px-3.5 py-2.5 rounded-md flex items-center gap-2 " +
+                "mt-4 text-[13px] font-medium px-3.5 py-2.5 rounded-md " +
                 (verifyMsg.includes("successfully")
                   ? "bg-[color:var(--green-bg)] text-[color:var(--green)]"
                   : "bg-[color:var(--red-bg)] text-[color:var(--red)]")
@@ -392,12 +376,8 @@ export default function PassPage({ token }) {
           </div>
         </div>
 
-        {/* Footer — brass rule to echo the top accent bar, so the card
-            reads as a bounded, complete document (letterhead top and
-            bottom) rather than trailing off. No "· Call Center" suffix —
-            this page is visitor/guide-facing, not an internal CRM screen. */}
+        {/* Footer */}
         <div className="border-t border-[color:var(--border)] bg-[color:var(--paper)]">
-          <div className="h-[2px] bg-gradient-to-r from-transparent via-[color:var(--brass)] to-transparent opacity-40" />
           <div className="px-6 py-4 flex items-center justify-center gap-2">
             <img src={logo} alt="" aria-hidden="true" className="h-4 w-auto opacity-60" />
             <span className="text-[11px] font-medium text-[color:var(--text-3)] tracking-[0.02em]">Auction Ethiopia</span>

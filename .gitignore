@@ -3,4 +3,5 @@ dist/
 .env
 .env.*
 
-0001-verification-notification-phase-1.patch
+
+0008-passpage-real-stamp-and-polish.patch
