@@ -3,7 +3,6 @@ import QRCode from "qrcode";
 import { Html5Qrcode } from "html5-qrcode";
 import { getPass, verifyPass } from "../../api/verification";
 import { logo } from "../../constants/assets";
-import watermark from "../../constants/assets/watermark.png";
 import { Stamp } from "../../components/ui";
 
 // Serves BOTH /v/:token (visitor) and /g/:token (guide) — the payload's
@@ -29,9 +28,25 @@ export default function PassPage({ token }) {
       .catch((e) => setError(e.body?.message || "This link is invalid or has expired."));
   }, [token]);
 
+  // QR generation notes (fixes the "speckled/dotted" look reported on
+  // both phone and desktop): the previous version generated the PNG at
+  // 220px with margin:0 and then displayed it at 180px — the browser's
+  // downscale resampling of a bitmap with zero quiet zone is exactly
+  // what produces that faint moire/dot artifact. Generating at the
+  // EXACT display size, with a proper quiet-zone margin and a fixed
+  // dark/light palette, and disabling browser smoothing on the <img>
+  // itself (imageRendering: 'pixelated') removes it entirely.
+  const QR_SIZE = 200;
   useEffect(() => {
     if (data?.ownToken) {
-      QRCode.toDataURL(data.ownToken, { width: 220, margin: 0 }).then(setQrDataUrl).catch(() => {});
+      QRCode.toDataURL(data.ownToken, {
+        width: QR_SIZE,
+        margin: 2,
+        errorCorrectionLevel: "M",
+        color: { dark: "#14171C", light: "#FFFFFF" },
+      })
+        .then(setQrDataUrl)
+        .catch(() => {});
     }
   }, [data]);
 
@@ -84,38 +99,6 @@ export default function PassPage({ token }) {
   const shellCls = "min-h-screen w-full bg-[color:var(--paper)] flex items-start justify-center py-10 px-4";
   const cardCls = "relative w-full max-w-[440px] bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl shadow-[0_10px_32px_rgba(20,23,28,0.12)] overflow-hidden";
 
-  // Faint background watermark — same visual language as the PDF export
-  // template in utils/export.js (a low-opacity logo mark, never
-  // competing with the QR code or copy for attention). Rendered INSIDE
-  // the middle content block only (not the header/footer, both of which
-  // paint their own opaque background and would otherwise hide it
-  // completely — that was the bug in the previous pass).
-  function Watermark() {
-    return (
-      <img
-        src={watermark}
-        alt=""
-        aria-hidden="true"
-        className="pointer-events-none select-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[260px] max-w-none opacity-[0.07] z-0"
-      />
-    );
-  }
-
-  // A small always-on badge — independent of verification state — so the
-  // page reads as an official document from the first paint, not only
-  // once someone scans/enters a code.
-  function EPassBadge() {
-    return (
-      <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)] border border-[color:var(--brass)]/30 rounded-full px-2.5 py-1">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4Z" />
-          <path d="m9 12 2 2 4-4" />
-        </svg>
-        E-Pass
-      </span>
-    );
-  }
-
   // Ticket-style "perforated" divider between the details block and the
   // QR block — two page-colored notches punched into the card's edges
   // plus a dashed rule, mimicking a torn ticket stub.
@@ -126,6 +109,17 @@ export default function PassPage({ token }) {
         <div className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[color:var(--paper)]" />
         <div className="border-t-2 border-dashed border-[color:var(--border)] mx-6" />
       </div>
+    );
+  }
+
+  // Small map-pin icon used next to the "Open in Maps" link, so it
+  // reads as an actionable link rather than plain text.
+  function MapPinIcon(props) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
+        <circle cx="12" cy="10" r="3" />
+      </svg>
     );
   }
 
@@ -175,9 +169,10 @@ export default function PassPage({ token }) {
                 href={s.mapsLink}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[color:var(--blue)] font-medium underline underline-offset-2 hover:text-[color:var(--blue)]"
+                className="inline-flex items-center gap-1 text-[color:var(--brass-dark)] font-semibold no-underline hover:underline underline-offset-2"
+                style={{ color: "var(--brass-dark)" }}
               >
-                Open in Maps
+                <MapPinIcon /> Open in Maps
               </a>
             </>
           )}
@@ -200,7 +195,7 @@ export default function PassPage({ token }) {
         <div className="px-6 pt-6 pb-5 border-b border-[color:var(--border)] bg-[color:var(--paper)]">
           <div className="flex items-start justify-between gap-3 mb-4">
             <img src={logo} alt="Auction Ethiopia" className="h-10 w-auto" />
-            <EPassBadge />
+            <Stamp text={isVisitor ? "Visitor Pass" : "Guide Pass"} kind="brass" />
           </div>
           <h1 className="font-display text-[21px] font-semibold tracking-[-0.01em] text-[color:var(--text)] m-0">
             {isVisitor ? "Visit pass" : "Guide verification"}
@@ -210,11 +205,8 @@ export default function PassPage({ token }) {
           </p>
         </div>
 
-        {/* Body — watermark lives behind everything in this block only,
-            so the opaque header/footer above/below never hide it. */}
+        {/* Body */}
         <div className="relative px-6 py-5 overflow-hidden">
-          <Watermark />
-
           <div className="relative z-10 bg-[color:var(--paper)] border border-[color:var(--border)] rounded-lg p-4">
             <div className="flex items-baseline justify-between gap-2 mb-3 pb-3 border-b border-[color:var(--border)]">
               <div>
@@ -242,7 +234,14 @@ export default function PassPage({ token }) {
             <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[color:var(--text-2)] mb-3">Your code</div>
             {qrDataUrl && (
               <div className="inline-block p-3.5 bg-white border border-[color:var(--border)] rounded-lg shadow-[0_1px_3px_rgba(20,23,28,0.06)]">
-                <img src={qrDataUrl} alt="QR code" width={180} height={180} className="block" />
+                <img
+                  src={qrDataUrl}
+                  alt="QR code"
+                  width={QR_SIZE}
+                  height={QR_SIZE}
+                  className="block"
+                  style={{ imageRendering: "pixelated" }}
+                />
               </div>
             )}
             <div className="font-mono text-[26px] font-semibold tracking-[0.3em] text-[color:var(--text)] mt-3">
@@ -326,11 +325,17 @@ export default function PassPage({ token }) {
           </div>
         </div>
 
-        <div className="px-6 py-3.5 border-t border-[color:var(--border)] bg-[color:var(--paper)] text-center">
-          <span className="text-[11px] font-medium text-[color:var(--text-3)]">Auction Ethiopia</span>
+        {/* Footer — brass rule to echo the top accent bar, so the card
+            reads as a bounded, complete document (letterhead top and
+            bottom) rather than trailing off. */}
+        <div className="border-t border-[color:var(--border)] bg-[color:var(--paper)]">
+          <div className="h-[2px] bg-gradient-to-r from-transparent via-[color:var(--brass)] to-transparent opacity-40" />
+          <div className="px-6 py-4 flex items-center justify-center gap-2">
+            <img src={logo} alt="" aria-hidden="true" className="h-4 w-auto opacity-60" />
+            <span className="text-[11px] font-medium text-[color:var(--text-3)] tracking-[0.02em]">Auction Ethiopia · Call Center</span>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
