@@ -191,7 +191,16 @@ def resolve_pass(token: str) -> dict:
         'subject': subject_data,
         'ownToken': token,
         'ownCode': own_code,
+        # "I verified them" — used to show the ink-stamp confirmation on
+        # THIS device.
         'otherVerified': bool(v.guideVerifiedAt if role == 'visitor' else v.visitorVerifiedAt),
+        # "They verified me" — the piece that was missing before: a
+        # visitor who was scanned by the guide had zero on-screen
+        # feedback that anything happened, since the guide is usually
+        # the only one who ever scans (a visitor rarely scans the guide
+        # back). This lets that visitor's own screen show "you're
+        # checked in" without requiring the reverse scan.
+        'ownVerified': bool(v.visitorVerifiedAt if role == 'visitor' else v.guideVerifiedAt),
         'expiresAt': v.expiresAt.isoformat(),
     }
 

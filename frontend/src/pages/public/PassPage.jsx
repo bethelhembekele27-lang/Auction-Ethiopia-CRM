@@ -27,6 +27,19 @@ export default function PassPage({ token }) {
       .catch((e) => setError(e.body?.message || "This link is invalid or has expired."));
   }, [token]);
 
+  // Passive refresh — the party being scanned (usually the visitor)
+  // never takes an action of their own, so without this their screen
+  // would sit on the scan prompt forever even after the guide has
+  // already verified them. Polling every 8s is cheap and well under
+  // the anon-endpoint throttle (30/min).
+  useEffect(() => {
+    if (error) return;
+    const t = setInterval(() => {
+      getPass(token).then(setData).catch(() => {});
+    }, 8000);
+    return () => clearInterval(t);
+  }, [token, error]);
+
   // QR generation notes (fixes the "speckled/dotted" look reported on
   // both phone and desktop): generate at the EXACT display size, with a
   // proper quiet-zone margin and a fixed dark/light palette, and disable
@@ -210,6 +223,12 @@ export default function PassPage({ token }) {
           <p className="text-[12.5px] text-[color:var(--text-2)] mt-0.5 mb-0">
             {s.company || "Auction Ethiopia (general)"}
           </p>
+          {data.ownVerified && (
+            <div className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-[color:var(--green)] bg-[color:var(--green-bg)] rounded-full px-3 py-1">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+              {isVisitor ? "You're checked in — the guide confirmed you" : "The visitor confirmed you"}
+            </div>
+          )}
         </div>
 
         {/* Body */}
