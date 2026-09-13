@@ -310,13 +310,18 @@ export default function PassPage({ token }) {
 
           <div className="relative z-10 h-px bg-[color:var(--border)] mb-6" />
 
-          {/* Verification status / scanner. A confirmed visit is
-              confirmed either way — "I scanned them" (otherVerified) or
-              "they scanned me" (ownVerified) both mean this visit is
-              checked in, so both show the same full stamp, not a lesser
-              version of it. Wording adapts to which actually happened. */}
+          {/* Verification status / scanner.
+              - The stamp shows once EITHER direction is done — "I
+                scanned them" (otherVerified) or "they scanned me"
+                (ownVerified) both mean this visit is checked in.
+              - The scan/manual-entry option is shown independently,
+                whenever otherVerified is still false — even after
+                ownVerified flips true — since mutual verification is
+                optional, not required, and someone who's already been
+                confirmed shouldn't lose the ability to confirm the
+                other party back if they want to. */}
           <div className="relative z-10">
-          {(data.otherVerified || data.ownVerified) ? (
+          {(data.otherVerified || data.ownVerified) && (
             <div className="relative flex items-center gap-4 bg-[color:var(--green-bg)] rounded-xl py-4 px-5 overflow-hidden">
               <img
                 src={stamp}
@@ -335,10 +340,12 @@ export default function PassPage({ token }) {
                 </div>
               </div>
             </div>
-          ) : (
-            <div>
+          )}
+
+          {!data.otherVerified && (
+            <div className={data.ownVerified ? "mt-4" : ""}>
               <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[color:var(--text-2)] mb-3 text-center">
-                Scan the {otherRoleLabel.toLowerCase()}'s code
+                {data.ownVerified ? `Optional — also verify the ${otherRoleLabel.toLowerCase()}` : `Scan the ${otherRoleLabel.toLowerCase()}'s code`}
               </div>
 
               {!scanning ? (
