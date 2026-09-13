@@ -223,12 +223,6 @@ export default function PassPage({ token }) {
           <p className="text-[12.5px] text-[color:var(--text-2)] mt-0.5 mb-0">
             {s.company || "Auction Ethiopia (general)"}
           </p>
-          {data.ownVerified && (
-            <div className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-[color:var(--green)] bg-[color:var(--green-bg)] rounded-full px-3 py-1">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-              {isVisitor ? "You're checked in — the guide confirmed you" : "The visitor confirmed you"}
-            </div>
-          )}
         </div>
 
         {/* Body */}
@@ -316,9 +310,13 @@ export default function PassPage({ token }) {
 
           <div className="relative z-10 h-px bg-[color:var(--border)] mb-6" />
 
-          {/* Verification status / scanner */}
+          {/* Verification status / scanner. A confirmed visit is
+              confirmed either way — "I scanned them" (otherVerified) or
+              "they scanned me" (ownVerified) both mean this visit is
+              checked in, so both show the same full stamp, not a lesser
+              version of it. Wording adapts to which actually happened. */}
           <div className="relative z-10">
-          {data.otherVerified ? (
+          {(data.otherVerified || data.ownVerified) ? (
             <div className="relative flex items-center gap-4 bg-[color:var(--green-bg)] rounded-xl py-4 px-5 overflow-hidden">
               <img
                 src={stamp}
@@ -327,8 +325,14 @@ export default function PassPage({ token }) {
                 style={{ transform: "rotate(-9deg)", filter: "drop-shadow(0 2px 3px rgba(20,23,28,0.18))" }}
               />
               <div className="text-left">
-                <div className="text-[14px] font-semibold text-[color:var(--text)]">{otherRoleLabel} confirmed</div>
-                <div className="text-[12px] text-[color:var(--text-2)] mt-0.5">Identity verified on-site.</div>
+                <div className="text-[14px] font-semibold text-[color:var(--text)]">
+                  {data.otherVerified ? `${otherRoleLabel} confirmed` : "You're verified"}
+                </div>
+                <div className="text-[12px] text-[color:var(--text-2)] mt-0.5">
+                  {data.otherVerified
+                    ? "Identity verified on-site."
+                    : `Your identity was confirmed by the ${otherRoleLabel.toLowerCase()}.`}
+                </div>
               </div>
             </div>
           ) : (
