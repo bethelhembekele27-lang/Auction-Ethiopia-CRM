@@ -82,19 +82,50 @@ export default function PassPage({ token }) {
   // is already loaded globally via main.jsx, so reuse the same design
   // language as the rest of the CRM rather than inventing a new one.
   const shellCls = "min-h-screen w-full bg-[color:var(--paper)] flex items-start justify-center py-10 px-4";
-  const cardCls = "relative w-full max-w-[440px] bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl shadow-[0_8px_28px_rgba(20,23,28,0.10)] overflow-hidden";
+  const cardCls = "relative w-full max-w-[440px] bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl shadow-[0_10px_32px_rgba(20,23,28,0.12)] overflow-hidden";
 
-  // Faint corner watermark — same visual language as the PDF export
-  // template in utils/export.js (low-opacity logo mark tucked in a
-  // corner, never competing with the QR code or copy for attention).
+  // Faint background watermark — same visual language as the PDF export
+  // template in utils/export.js (a low-opacity logo mark, never
+  // competing with the QR code or copy for attention). Rendered INSIDE
+  // the middle content block only (not the header/footer, both of which
+  // paint their own opaque background and would otherwise hide it
+  // completely — that was the bug in the previous pass).
   function Watermark() {
     return (
       <img
         src={watermark}
         alt=""
         aria-hidden="true"
-        className="pointer-events-none select-none absolute -right-6 -bottom-6 w-[170px] opacity-[0.05] z-0"
+        className="pointer-events-none select-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[260px] max-w-none opacity-[0.07] z-0"
       />
+    );
+  }
+
+  // A small always-on badge — independent of verification state — so the
+  // page reads as an official document from the first paint, not only
+  // once someone scans/enters a code.
+  function EPassBadge() {
+    return (
+      <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)] border border-[color:var(--brass)]/30 rounded-full px-2.5 py-1">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4Z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+        E-Pass
+      </span>
+    );
+  }
+
+  // Ticket-style "perforated" divider between the details block and the
+  // QR block — two page-colored notches punched into the card's edges
+  // plus a dashed rule, mimicking a torn ticket stub.
+  function TicketDivider() {
+    return (
+      <div className="relative -mx-6 my-6">
+        <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[color:var(--paper)]" />
+        <div className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[color:var(--paper)]" />
+        <div className="border-t-2 border-dashed border-[color:var(--border)] mx-6" />
+      </div>
     );
   }
 
@@ -102,13 +133,10 @@ export default function PassPage({ token }) {
     return (
       <div className={shellCls}>
         <div className={cardCls + " p-8 text-center"}>
-          <Watermark />
-          <div className="relative z-10">
-            <img src={logo} alt="Auction Ethiopia" className="h-8 w-auto mx-auto mb-5 opacity-90" />
-            <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-[color:var(--red-bg)] text-[color:var(--red)] text-xl mb-3">!</div>
-            <p className="font-display text-[15px] font-semibold text-[color:var(--text)]">{error}</p>
-            <p className="text-[13px] text-[color:var(--text-3)] mt-1.5">If this looks wrong, ask the call center to resend your confirmation.</p>
-          </div>
+          <img src={logo} alt="Auction Ethiopia" className="h-10 w-auto mx-auto mb-5 opacity-90" />
+          <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-[color:var(--red-bg)] text-[color:var(--red)] text-xl mb-3">!</div>
+          <p className="font-display text-[15px] font-semibold text-[color:var(--text)]">{error}</p>
+          <p className="text-[13px] text-[color:var(--text-3)] mt-1.5">If this looks wrong, ask the call center to resend your confirmation.</p>
         </div>
       </div>
     );
@@ -133,6 +161,7 @@ export default function PassPage({ token }) {
     s.auction && { label: "Auction", value: s.auction },
     s.batch && { label: "Batch", value: s.batch },
     s.items && { label: "Item(s)", value: s.items },
+    s.quantity && { label: "Quantity", value: s.quantity },
     { label: "Date & time", value: `${s.visitDate} · ${s.visitTime}` },
     {
       label: "Location",
@@ -163,12 +192,17 @@ export default function PassPage({ token }) {
   return (
     <div className={shellCls}>
       <div className={cardCls}>
-        <Watermark />
+        {/* Brand accent bar — same brass rule used at the top of the PDF
+            export template, ties this page visually to the rest of the CRM. */}
+        <div className="h-[5px] bg-[color:var(--brass)]" />
 
         {/* Header */}
-        <div className="relative z-10 px-6 pt-6 pb-5 border-b border-[color:var(--border)] bg-[color:var(--paper)]">
-          <img src={logo} alt="Auction Ethiopia" className="h-7 w-auto mb-3" />
-          <h1 className="font-display text-[20px] font-semibold tracking-[-0.01em] text-[color:var(--text)] m-0">
+        <div className="px-6 pt-6 pb-5 border-b border-[color:var(--border)] bg-[color:var(--paper)]">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <img src={logo} alt="Auction Ethiopia" className="h-10 w-auto" />
+            <EPassBadge />
+          </div>
+          <h1 className="font-display text-[21px] font-semibold tracking-[-0.01em] text-[color:var(--text)] m-0">
             {isVisitor ? "Visit pass" : "Guide verification"}
           </h1>
           <p className="text-[12.5px] text-[color:var(--text-2)] mt-0.5 mb-0">
@@ -176,9 +210,12 @@ export default function PassPage({ token }) {
           </p>
         </div>
 
-        {/* Visit details */}
-        <div className="relative z-10 px-6 py-5">
-          <div className="bg-[color:var(--paper)] border border-[color:var(--border)] rounded-lg p-4 mb-6">
+        {/* Body — watermark lives behind everything in this block only,
+            so the opaque header/footer above/below never hide it. */}
+        <div className="relative px-6 py-5 overflow-hidden">
+          <Watermark />
+
+          <div className="relative z-10 bg-[color:var(--paper)] border border-[color:var(--border)] rounded-lg p-4">
             <div className="flex items-baseline justify-between gap-2 mb-3 pb-3 border-b border-[color:var(--border)]">
               <div>
                 <div className="text-[10.5px] uppercase tracking-[0.04em] text-[color:var(--text-3)] mb-0.5">
@@ -198,8 +235,10 @@ export default function PassPage({ token }) {
             </dl>
           </div>
 
+          <TicketDivider />
+
           {/* Own QR + code */}
-          <div className="text-center mb-6">
+          <div className="relative z-10 text-center mb-6">
             <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[color:var(--text-2)] mb-3">Your code</div>
             {qrDataUrl && (
               <div className="inline-block p-3.5 bg-white border border-[color:var(--border)] rounded-lg shadow-[0_1px_3px_rgba(20,23,28,0.06)]">
@@ -214,9 +253,10 @@ export default function PassPage({ token }) {
             </p>
           </div>
 
-          <div className="h-px bg-[color:var(--border)] mb-6" />
+          <div className="relative z-10 h-px bg-[color:var(--border)] mb-6" />
 
           {/* Verification status / scanner */}
+          <div className="relative z-10">
           {data.otherVerified ? (
             <div className="flex items-center justify-center gap-2.5 bg-[color:var(--green-bg)] rounded-lg py-3.5 px-4">
               <span className="text-[13.5px] font-medium text-[color:var(--text)]">{otherRoleLabel} confirmed</span>
@@ -283,9 +323,10 @@ export default function PassPage({ token }) {
               {verifyMsg}
             </div>
           )}
+          </div>
         </div>
 
-        <div className="relative z-10 px-6 py-3.5 border-t border-[color:var(--border)] bg-[color:var(--paper)] text-center">
+        <div className="px-6 py-3.5 border-t border-[color:var(--border)] bg-[color:var(--paper)] text-center">
           <span className="text-[11px] font-medium text-[color:var(--text-3)]">Auction Ethiopia</span>
         </div>
       </div>

@@ -17,7 +17,7 @@ export const emptyAppt = {
   id: "", auction: "", visitorName: "", phone: "", company: "",
   visitDate: "", visitTime: "", assignedStaff: "", status: "Requested", notes: "",
   setupId: "", batch: "", guideName: "", guidePhone: "", address: "", items: "",
-  mapsLink: "",
+  quantity: "", mapsLink: "",
 };
 
 const WHEN_PRESETS = [
@@ -323,6 +323,9 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           </Field>
           <Field label="Visit date"><input type="date" className={inputCls} value={draft.visitDate} onChange={(e) => setDraft({ ...draft, visitDate: e.target.value })} /></Field>
           <Field label="Visit time"><input type="time" className={inputCls} value={draft.visitTime} onChange={(e) => setDraft({ ...draft, visitTime: e.target.value })} /></Field>
+          <Field label="Quantity (optional)">
+            <input className={inputCls} placeholder="e.g. 1, or 3 lots" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} />
+          </Field>
           <Field label="Google Maps link (optional)" full>
             <input className={inputCls} placeholder="https://maps.google.com/…" value={draft.mapsLink} onChange={(e) => setDraft({ ...draft, mapsLink: e.target.value })} />
           </Field>

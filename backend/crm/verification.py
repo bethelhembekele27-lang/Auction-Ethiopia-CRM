@@ -83,9 +83,10 @@ def build_visitation_messages(appointment, verification: PartyVerification) -> t
     location = " — ".join(location_bits) or "Location to be confirmed"
 
     what = appointment.batch or appointment.auction or "your item"
+    qty_suffix = f" (qty: {appointment.quantity})" if appointment.quantity else ""
 
     visitor_message = (
-        f"Auction Ethiopia: your visit to view {what} is set for "
+        f"Auction Ethiopia: your visit to view {what}{qty_suffix} is set for "
         f"{appointment.visitDate} at {appointment.visitTime}. "
         f"Location: {location}. Guide: {appointment.guideName or '—'} "
         f"({appointment.guidePhone or '—'}). Your visit pass (QR + code): {visitor_link}"
@@ -93,7 +94,7 @@ def build_visitation_messages(appointment, verification: PartyVerification) -> t
 
     guide_message = (
         f"Auction Ethiopia: {appointment.visitorName} ({appointment.phone}) is "
-        f"scheduled to view {what} on {appointment.visitDate} at "
+        f"scheduled to view {what}{qty_suffix} on {appointment.visitDate} at "
         f"{appointment.visitTime}. Verify them here: {guide_link}"
     )
 
@@ -174,7 +175,7 @@ def resolve_pass(token: str) -> dict:
         subject_data = {
             'visitorName': appt.visitorName, 'phone': appt.phone,
             'company': appt.company, 'auction': appt.auction, 'batch': appt.batch,
-            'items': appt.items,
+            'items': appt.items, 'quantity': appt.quantity,
             'visitDate': appt.visitDate.isoformat(), 'visitTime': appt.visitTime.strftime('%H:%M'),
             'address': appt.address, 'mapsLink': appt.mapsLink,
             'guideName': appt.guideName, 'guidePhone': appt.guidePhone,

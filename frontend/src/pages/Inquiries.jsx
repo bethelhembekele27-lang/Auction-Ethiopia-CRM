@@ -570,6 +570,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
               </Field>
               <Field label="Visit date"><input type="date" className={inputCls} value={apptDraft.visitDate} onChange={(e) => setApptDraft({ ...apptDraft, visitDate: e.target.value })} /></Field>
               <Field label="Visit time"><input type="time" className={inputCls} value={apptDraft.visitTime} onChange={(e) => setApptDraft({ ...apptDraft, visitTime: e.target.value })} /></Field>
+              <Field label="Quantity (optional)"><input className={inputCls} placeholder="e.g. 1, or 3 lots" value={apptDraft.quantity} onChange={(e) => setApptDraft({ ...apptDraft, quantity: e.target.value })} /></Field>
               <Field label="Notes" full><textarea className={inputCls} rows={2} value={apptDraft.notes} onChange={(e) => setApptDraft({ ...apptDraft, notes: e.target.value })} /></Field>
             </div>
             <div style={{ fontSize: 12, color: "var(--text-3)" }}>Registering this visitor automatically adds them to the Follow-ups list for a call back after the visit.</div>

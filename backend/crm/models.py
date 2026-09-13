@@ -286,6 +286,10 @@ class Appointment(models.Model):
     guidePhone = models.CharField(max_length=20, blank=True, default='')
     address = models.CharField(max_length=300, blank=True, default='')
     items = models.TextField(blank=True, default='')
+    # How many of the item(s) this visit covers (e.g. "1", "3 lots") — free
+    # text like `batch`/`items`, not a real number, since auction lots
+    # aren't always countable as a single integer (e.g. "2 pallets").
+    quantity = models.CharField(max_length=50, blank=True, default='')
     # Verification & Notification feature (visitation phase) — optional
     # Google Maps link shown alongside the free-text `address` on SMS
     # confirmations and the visitor pass page.
