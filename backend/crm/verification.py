@@ -181,9 +181,18 @@ def resolve_pass(token: str) -> dict:
             'guideName': appt.guideName, 'guidePhone': appt.guidePhone,
         }
     else:
-        # Pickup pass data lands in phase 4, alongside the Pickup model
-        # actually being exposed via any view/serializer.
-        raise VerificationError("Unsupported pass type.")
+        try:
+            pu = Pickup.objects.get(publicId=v.subjectId)
+        except Pickup.DoesNotExist:
+            raise VerificationError("The related pickup record no longer exists.")
+        subject_data = {
+            'visitorName': pu.winnerName, 'phone': pu.phone,
+            'company': '', 'auction': pu.auction, 'batch': '',
+            'items': pu.itemDescription, 'quantity': pu.quantity,
+            'visitDate': pu.pickupDate.isoformat(), 'visitTime': pu.pickupTime.strftime('%H:%M'),
+            'address': pu.address, 'mapsLink': pu.mapsLink,
+            'guideName': pu.guideName, 'guidePhone': pu.guidePhone,
+        }
 
     return {
         'role': role,
@@ -242,3 +251,30 @@ def verify_token(scanned: str, own_token: str, own_role: str, ip: str | None = N
         v.save(update_fields=['guideVerifiedAt', 'guideVerifiedByIp'])
 
     return {'verifiedRole': other_role, 'verifiedAt': now.isoformat(), 'subjectId': v.subjectId, 'subjectType': v.subjectType}
+
+def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str, str]:
+    """Same shape as build_visitation_messages — winner + guide SMS."""
+    visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
+    guide_link = f"{FRONTEND_BASE_URL}/g/{verification.guideToken}"
+
+    location_bits = [pickup.address] if pickup.address else []
+    if pickup.mapsLink:
+        location_bits.append(pickup.mapsLink)
+    location = " — ".join(location_bits) or "Location to be confirmed"
+
+    what = pickup.itemDescription or pickup.auction or "your item(s)"
+    qty_suffix = f" (qty: {pickup.quantity})" if pickup.quantity else ""
+    ref_suffix = f" Ref: {pickup.paymentReference}." if pickup.paymentReference else ""
+
+    visitor_message = (
+        f"Auction Ethiopia: your pickup for {what}{qty_suffix} is set for "
+        f"{pickup.pickupDate} at {pickup.pickupTime}.{ref_suffix} "
+        f"Location: {location}. Guide: {pickup.guideName or '—'} "
+        f"({pickup.guidePhone or '—'}). Your pickup pass (QR + code): {visitor_link}"
+    )
+    guide_message = (
+        f"Auction Ethiopia: {pickup.winnerName} ({pickup.phone}) is scheduled to "
+        f"collect {what}{qty_suffix} on {pickup.pickupDate} at {pickup.pickupTime}. "
+        f"Verify them here: {guide_link}"
+    )
+    return visitor_message, guide_message

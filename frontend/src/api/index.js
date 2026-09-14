@@ -9,3 +9,4 @@ export * as notifications from "./notifications";
 export * as audit from "./audit";
 export * as employees from "./employees";
 export * as dashboard from "./dashboard";
+export * as pickups from "./pickups";

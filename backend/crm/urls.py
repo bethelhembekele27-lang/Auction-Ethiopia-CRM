@@ -1,38 +1,10 @@
 from django.urls import path
 from .views import (
-    LoginView,
-    LogoutView,
-    EmployeeDetailView,
-    EmployeeListCreateView,
-    EmployeePrivilegesView,
-    EmployeeResetPasswordView,
-    InquiryDetailView,
-    InquiryListCreateView,
-    InquiryAttachmentView,
-    RoleListCreateView,
-    FollowupListCreateView,
-    FollowupDetailView,
-    VisitSetupListCreateView,
-    VisitSetupDetailView,
-    AppointmentListCreateView,
-    AppointmentDetailView,
-    AppointmentSendConfirmationView,
-    ComplaintListCreateView,
-    ComplaintDetailView,
-    EscalationListCreateView,
-    EscalationResolveView,
-    AuditLogListView,
-    AuditLogClearView,
-    GoogleLoginView,
-    RoleDeleteView,
-    ChangePasswordView,
-    UpdateUsernameView,
-    PushSubscribeView,
-    PushUnsubscribeView,
-    VapidPublicKeyView,
-    TriggerFollowupRemindersView,
-    PassResolveView,
-    PassVerifyView,
+    LoginView,LogoutView,EmployeeDetailView,EmployeeListCreateView,EmployeePrivilegesView,EmployeeResetPasswordView,InquiryDetailView,InquiryListCreateView,
+    InquiryAttachmentView,RoleListCreateView,FollowupListCreateView,FollowupDetailView,VisitSetupListCreateView,VisitSetupDetailView,AppointmentListCreateView,AppointmentDetailView,
+    AppointmentSendConfirmationView,ComplaintListCreateView,ComplaintDetailView,EscalationListCreateView,EscalationResolveView,AuditLogListView,AuditLogClearView,GoogleLoginView,
+    RoleDeleteView,ChangePasswordView,UpdateUsernameView,PushSubscribeView,PushUnsubscribeView, VapidPublicKeyView,TriggerFollowupRemindersView,PassResolveView,PassVerifyView,
+    PickupListCreateView, PickupDetailView, PickupSendConfirmationView,
 )
 
 urlpatterns = [
@@ -84,4 +56,10 @@ urlpatterns = [
     # Phase 2 — public pass pages (no auth; token/code is the credential)
     path('pass/verify/', PassVerifyView.as_view(), name='pass-verify'),
     path('pass/<str:token>/', PassResolveView.as_view(), name='pass-resolve'),
+    
+  
+
+    path('pickups', PickupListCreateView.as_view(), name='pickup-list-create'),
+    path('pickups/<str:pickup_id>', PickupDetailView.as_view(), name='pickup-detail'),
+    path('pickups/<str:pickup_id>/send-confirmation/', PickupSendConfirmationView.as_view(), name='pickup-send-confirmation'),
 ]

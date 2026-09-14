@@ -14,7 +14,7 @@ from django.utils.dateparse import parse_date
 from .models import (
     Inquiry,InquiryAttachment ,Employee, CATEGORIES, PRIORITIES, INQUIRY_STATUSES,
     Followup, FOLLOWUP_SETTABLE_STATUSES,VisitSetup, DAYS_OF_WEEK,Appointment, Followup,Role,Complaint, COMPLAINT_CATEGORIES, DEPARTMENTS, COMPLAINT_STATUSES,Escalation,
-    AuditLog,PushSubscription,)
+    AuditLog,PushSubscription,Pickup, PICKUP_STATUSES )
 import re
 
 ET_PHONE_RE = re.compile(r'^(?:\+251|0)(9|7)\d{8}$')
@@ -970,3 +970,48 @@ class PushSubscriptionSerializer(serializers.Serializer):
             defaults={'user': user, 'p256dh': keys.get('p256dh', ''), 'auth': keys.get('auth', '')},
         )
         return sub
+    
+ # add Pickup, PICKUP_STATUSES to the existing models import at top of file
+
+class PickupSerializer(serializers.ModelSerializer):
+    """
+    Mirrors AppointmentSerializer exactly. No auto-follow-up creation
+    (pickups are post-sale collection, not a sales lead — nothing to
+    follow up on the way a visitation prospect needs).
+    createdBy is set server-side from the authenticated employee, same
+    pattern as VisitSetupSerializer.
+    """
+    id = serializers.CharField(source='publicId', read_only=True)
+    pickupTime = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'])
+    createdBy = serializers.CharField(source='createdBy.name', read_only=True, default='')
+
+    class Meta:
+        model = Pickup
+        fields = [
+            'id', 'winnerName', 'phone', 'auction', 'itemDescription', 'quantity',
+            'paymentReference', 'pickupDate', 'pickupTime', 'guideName', 'guidePhone',
+            'address', 'mapsLink', 'status', 'createdBy', 'createdAt',
+        ]
+
+    def validate_phone(self, value):
+        return validate_ethiopian_phone(value)
+
+    def validate_status(self, value):
+        if value not in PICKUP_STATUSES:
+            raise serializers.ValidationError(f"Must be one of: {', '.join(PICKUP_STATUSES)}")
+        return value
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                validated_data['createdBy'] = request.user.employee
+            except Employee.DoesNotExist:
+                pass
+        return Pickup.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance

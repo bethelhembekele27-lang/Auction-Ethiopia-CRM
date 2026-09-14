@@ -39,7 +39,7 @@ import os
 from .push import send_push_to_user
 from .verification import (
     create_verification, build_visitation_messages, send_and_log,
-    resolve_pass, verify_token, VerificationError,
+    resolve_pass, verify_token, VerificationError,build_pickup_messages,
 )
 # =============================================================================
 # Shared helpers
@@ -808,6 +808,85 @@ class AppointmentSendConfirmationView(APIView):
         return Response({
             'message': 'Confirmation sent.',
             'visitor': {'status': visitor_log.status, 'detail': visitor_log.providerResponse},
+            'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
+        })
+
+
+
+class PickupListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = Pickup.objects.all().order_by('pickupDate')
+        status_param = request.query_params.get('status')
+        if status_param:
+            qs = qs.filter(status=status_param)
+        return Response(PickupSerializer(qs, many=True).data)
+
+    def post(self, request):
+        serializer = PickupSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        pickup = serializer.save()
+        log_audit(request, 'Schedule pickup', '—', f'{pickup.publicId} created',
+                   f'{pickup.winnerName} · {pickup.itemDescription or pickup.auction}')
+        return Response(PickupSerializer(pickup).data, status=http_status.HTTP_201_CREATED)
+
+
+class PickupDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pickup_id):
+        try:
+            pickup = Pickup.objects.get(publicId=pickup_id)
+        except Pickup.DoesNotExist:
+            return Response({'message': 'Pickup not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        prev_status = pickup.status
+        serializer = PickupSerializer(pickup, data=request.data, partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        updated = serializer.save()
+        if prev_status != updated.status:
+            log_audit(request, 'Update pickup status', prev_status, updated.status,
+                       f'{updated.publicId} · {updated.winnerName}')
+        return Response(PickupSerializer(updated).data)
+
+    def delete(self, request, pickup_id):
+        if not has_any_role('administrator', 'auction_manager')().has_permission(request, self):
+            return Response({'message': 'You do not have permission to delete pickups.'}, status=http_status.HTTP_403_FORBIDDEN)
+        try:
+            pu = Pickup.objects.get(publicId=pickup_id)
+        except Pickup.DoesNotExist:
+            return Response({'message': 'Pickup not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        pid, name = pu.publicId, pu.winnerName
+        pu.delete()
+        log_audit(request, 'Delete pickup', f'{pid} · {name}', '—', 'Permanently removed')
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
+
+
+class PickupSendConfirmationView(APIView):
+    """Mirrors AppointmentSendConfirmationView exactly."""
+    permission_classes = [IsAuthenticated, has_any_role('administrator', 'call_operator', 'auction_manager')]
+
+    def post(self, request, pickup_id):
+        try:
+            pickup = Pickup.objects.get(publicId=pickup_id)
+        except Pickup.DoesNotExist:
+            return Response({'message': 'Pickup not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        verification = create_verification('pickup', pickup.publicId)
+        winner_message, guide_message = build_pickup_messages(pickup, verification)
+
+        winner_log = send_and_log('pickup', pickup.publicId, 'visitor', pickup.phone, winner_message)
+        guide_log = None
+        if pickup.guidePhone:
+            guide_log = send_and_log('pickup', pickup.publicId, 'guide', pickup.guidePhone, guide_message)
+
+        summary = f'{pickup.winnerName} · winner {winner_log.status}'
+        summary += f', guide {guide_log.status}' if guide_log else ', no guide phone on file — guide SMS skipped'
+        log_audit(request, 'Send pickup confirmation', '—', pickup.publicId, summary)
+
+        return Response({
+            'message': 'Confirmation sent.',
+            'visitor': {'status': winner_log.status, 'detail': winner_log.providerResponse},
             'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
         })
 
