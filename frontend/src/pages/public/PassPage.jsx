@@ -268,7 +268,7 @@ export default function PassPage({ token }) {
                           href={s.mapsLink}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[color:var(--brass-dark)] font-semibold no-underline hover:underline underline-offset-2"
+                          className="inline-flex items-center gap-1 text-[color:var(--blue)] font-semibold no-underline hover:underline underline-offset-2"
                         >
                           <MapPinIcon /> Open in Maps
                         </a>
@@ -316,9 +316,18 @@ export default function PassPage({ token }) {
 
           <div className="relative z-10 h-px bg-[color:var(--border)] mb-6" />
 
-          {/* Verification status / scanner */}
+          {/* Verification status / scanner.
+              - The stamp shows once EITHER direction is done — "I
+                scanned them" (otherVerified) or "they scanned me"
+                (ownVerified) both mean this visit is checked in.
+              - The scan/manual-entry option is shown independently,
+                whenever otherVerified is still false — even after
+                ownVerified flips true — since mutual verification is
+                optional, not required, and someone who's already been
+                confirmed shouldn't lose the ability to confirm the
+                other party back if they want to. */}
           <div className="relative z-10">
-          {data.otherVerified ? (
+          {(data.otherVerified || data.ownVerified) && (
             <div className="relative flex items-center gap-4 bg-[color:var(--green-bg)] rounded-xl py-4 px-5 overflow-hidden">
               <img
                 src={stamp}
@@ -327,14 +336,22 @@ export default function PassPage({ token }) {
                 style={{ transform: "rotate(-9deg)", filter: "drop-shadow(0 2px 3px rgba(20,23,28,0.18))" }}
               />
               <div className="text-left">
-                <div className="text-[14px] font-semibold text-[color:var(--text)]">{otherRoleLabel} confirmed</div>
-                <div className="text-[12px] text-[color:var(--text-2)] mt-0.5">Identity verified on-site.</div>
+                <div className="text-[14px] font-semibold text-[color:var(--text)]">
+                  {data.otherVerified ? `${otherRoleLabel} confirmed` : "You're verified"}
+                </div>
+                <div className="text-[12px] text-[color:var(--text-2)] mt-0.5">
+                  {data.otherVerified
+                    ? "Identity verified on-site."
+                    : `Your identity was confirmed by the ${otherRoleLabel.toLowerCase()}.`}
+                </div>
               </div>
             </div>
-          ) : (
-            <div>
+          )}
+
+          {!data.otherVerified && (
+            <div className={data.ownVerified ? "mt-4" : ""}>
               <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[color:var(--text-2)] mb-3 text-center">
-                Scan the {otherRoleLabel.toLowerCase()}'s code
+                {data.ownVerified ? `Optional — also verify the ${otherRoleLabel.toLowerCase()}` : `Scan the ${otherRoleLabel.toLowerCase()}'s code`}
               </div>
 
               {!scanning ? (
