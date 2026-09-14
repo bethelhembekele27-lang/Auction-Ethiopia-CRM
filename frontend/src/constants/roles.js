@@ -31,6 +31,7 @@ export const navItems = [
   { key: "followups", label: "Follow-ups" },
   { key: "visitsetup", label: "Visit Setup" },
   { key: "visitations", label: "Visitations" },
+  { key: "pickups", label: "Pickups" },          // ← new
   { key: "complaints", label: "Complaints" },
   { key: "reports", label: "Reports", roles: ["administrator"] },
   { key: "audit", label: "Audit trail", roles: ADMIN_LIKE_ROLES },
@@ -38,7 +39,6 @@ export const navItems = [
   { key: "employees", label: "Employees", roles: ["administrator"] },
   { key: "notifications", label: "Notifications", hidden: true },
 ];
-
 // Single source of truth for "what page should this role land on after
 // login" — used by App.jsx instead of hardcoding "dashboard" for everyone,
 // since call_operator can no longer see that tab (see navItems above).

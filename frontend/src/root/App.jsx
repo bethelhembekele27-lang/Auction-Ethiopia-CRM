@@ -23,6 +23,8 @@ import { roleLabels, EDIT_ROLES, ADMIN_LIKE_ROLES, navItems, defaultPageForRole 
 import { pad, nowStamp } from "../utils/format";
 import * as api from "../api";
 import { enablePushForThisDevice } from "../utils/pushSetup";
+import Pickups from "../pages/Pickups";
+
 
 // This file is intentionally thin — routing + session shell only. All
 // page logic lives in pages/, all shared UI in components/. Every entity
@@ -89,6 +91,7 @@ export default function App() {
   const [inquiries, setInquiries] = useState([]);
   const [followups, setFollowups] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [pickups, setPickups] = useState([]);
   const [visitSetups, setVisitSetups] = useState([]);
   const [complaints, setComplaints] = useState([]);
   const [escalations, setEscalations] = useState([]);
@@ -143,6 +146,7 @@ export default function App() {
         api.inquiries.listInquiries(),
         api.followups.listFollowups(),
         api.appointments.listAppointments(),
+        api.pickups.listPickups(),
         api.visitSetups.listVisitSetups(),
         api.complaints.listComplaints(),
         api.escalations.listEscalations(),
@@ -159,6 +163,7 @@ export default function App() {
       setInquiries(inquiriesRes || []);
       setFollowups(followupsRes || []);
       setAppointments(appointmentsRes || []);
+      setPickups(pickupsRes || []);
       setVisitSetups(visitSetupsRes || []);
       setComplaints(complaintsRes || []);
       setEscalations(escalationsRes || []);
@@ -316,6 +321,7 @@ export default function App() {
               {page === "followups" && <Followups followups={followups} setFollowups={setFollowups} canEdit={canEdit} addAudit={addAudit} />}
               {page === "visitsetup" && <VisitSetups visitSetups={visitSetups} setVisitSetups={setVisitSetups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
               {page === "visitations" && <Visitations appointments={appointments} setAppointments={setAppointments} visitSetups={visitSetups} setFollowups={setFollowups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
+              {page === "pickups" && <Pickups pickups={pickups} setPickups={setPickups} canEdit={canEdit} addAudit={addAudit} session={session} />}
               {page === "complaints" && <Complaints complaints={complaints} setComplaints={setComplaints} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />} 
               {page === "reports" && canSeePage("reports") && <Reports inquiries={inquiries} appointments={appointments} complaints={complaints} />}
               {page === "audit" && canSeePage("audit") && <Audit auditLog={auditLog} setAuditLog={setAuditLog} session={session} />}
