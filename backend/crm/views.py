@@ -7,8 +7,8 @@ from rest_framework.authtoken.models import Token
 from .permissions import has_any_role
 from .models import (
     Employee, Inquiry, PERMISSIONS, Role, Followup, VisitSetup,
-    Appointment, Complaint, Escalation, AuditLog,InquiryAttachment,PushSubscription,
-    PartyVerification,
+    Appointment, Complaint, Escalation, AuditLog, InquiryAttachment, PushSubscription,
+    PartyVerification, Pickup,
 )
 from .serializers import (
     EmployeeCreateSerializer,
@@ -30,7 +30,7 @@ from .serializers import (
     UpdateUsernameSerializer,
     AdminResetPasswordSerializer,
     PushSubscriptionSerializer,
-    
+    PickupSerializer,
 )
 from django.contrib.auth.models import User
 from rest_framework.parsers import MultiPartParser
