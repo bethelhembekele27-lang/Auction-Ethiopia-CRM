@@ -156,7 +156,7 @@ export default function App() {
       ]);
 
       const [
-        inquiriesRes, followupsRes, appointmentsRes, visitSetupsRes,
+        inquiriesRes, followupsRes, appointmentsRes, pickupsRes, visitSetupsRes,
         complaintsRes, escalationsRes, auditRes, employeesRes, rolesRes,
       ] = results.map((r) => (r.status === "fulfilled" ? r.value : null));
 
@@ -173,7 +173,7 @@ export default function App() {
 
       // Only surface a real error banner if something unexpected failed —
       // not for endpoints this role isn't supposed to access anyway.
-      const unexpectedFailure = results.some((r, i) => r.status === "rejected" && !(i === 6 && !isAdminLike));
+      const unexpectedFailure = results.some((r, i) => r.status === "rejected" && !(i === 7 && !isAdminLike));
       if (unexpectedFailure) {
         setLoadError("Some data couldn't be loaded — try refreshing.");
       }
