@@ -18,8 +18,9 @@ from decouple import config
 from django.db import models
 from django.utils import timezone
 
-from .models import PartyVerification, NotificationLog
+from .models import PartyVerification, NotificationLog,Pickup
 from .notifications import get_sms_sender
+
 
 # How long a visitor/guide pass stays valid after an appointment's
 # confirmation is sent — 3 days, per product decision.
