@@ -81,7 +81,7 @@ def build_visitation_messages(appointment, verification: PartyVerification) -> t
     location_bits = [appointment.address] if appointment.address else []
     if appointment.mapsLink:
         location_bits.append(appointment.mapsLink)
-    location = " — ".join(location_bits) or "Location to be confirmed"
+    location = "-".join(location_bits) or "Location to be confirmed"
 
     what = appointment.batch or appointment.auction or "your item"
     qty_suffix = f" (qty: {appointment.quantity})" if appointment.quantity else ""
@@ -287,7 +287,7 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
     location_bits = [pickup.address] if pickup.address else []
     if pickup.mapsLink:
         location_bits.append(pickup.mapsLink)
-    location = " — ".join(location_bits) or "Location to be confirmed"
+    location = " - ".join(location_bits) or "Location to be confirmed"
 
     what = pickup.itemDescription or pickup.auction or "your item(s)"
     qty_suffix = f" (qty: {pickup.quantity})" if pickup.quantity else ""
