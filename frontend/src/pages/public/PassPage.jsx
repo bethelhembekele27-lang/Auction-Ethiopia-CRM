@@ -209,6 +209,12 @@ export default function PassPage({ token }) {
   const otherRoleLabel = isVisitor ? "Guide" : "Visitor";
   const visitorInitial = (s.visitorName || "?").trim().charAt(0).toUpperCase();
 
+  const isPickup = data.subjectType === "pickup";
+  const passTypeLabel = isPickup ? "Pickup Pass" : "Visitor Pass"; // top-right badge, still swaps to "Guide Pass" below for guides
+  const heroTitle = isPickup ? "Pickup pass" : "Visit pass";
+  const partyLabel = isPickup ? "Winner" : "Visitor"; // "VISITOR" small-caps label above the name
+  const dateTimeLabel = isPickup ? "Pickup date & time" : "Date & time";
+
   return (
     <div className={shellCls}>
       <div className={cardCls}>
@@ -220,11 +226,11 @@ export default function PassPage({ token }) {
           <div className="flex items-start justify-between gap-3 mb-4">
             <img src={logo} alt="Auction Ethiopia" className="h-9 w-auto" />
             <span className="inline-flex items-center font-mono font-semibold text-[10.5px] tracking-[0.06em] uppercase px-3 py-1.5 rounded-full text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)]">
-              {isVisitor ? "Visitor Pass" : "Guide Pass"}
+              {isVisitor ? passTypeLabel : "Guide Pass"}
             </span>
           </div>
           <h1 className="font-display text-[22px] font-semibold tracking-[-0.01em] text-[color:var(--text)] m-0">
-            {isVisitor ? "Visit pass" : "Guide verification"}
+            {isVisitor ? heroTitle : (isPickup ? "Guide verification — pickup" : "Guide verification")}
           </h1>
           <p className="text-[12.5px] text-[color:var(--text-2)] mt-0.5 mb-0">
             {s.company || "Auction Ethiopia (general)"}
@@ -240,7 +246,7 @@ export default function PassPage({ token }) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[10px] uppercase tracking-[0.05em] text-[color:var(--text-3)]">
-                  {isVisitor ? "Visitor" : "Visitor to verify"}
+                  {isVisitor ? partyLabel : `${partyLabel} to verify`}
                 </div>
                 <div className="font-display font-semibold text-[15.5px] text-[color:var(--text)] truncate">{s.visitorName}</div>
               </div>
@@ -254,7 +260,7 @@ export default function PassPage({ token }) {
               <DetailRow icon={<TagIcon />} label="Batch" value={s.batch} />
               <DetailRow icon={<BoxIcon />} label="Item(s)" value={s.items} />
               <DetailRow icon={<BoxIcon />} label="Quantity" value={s.quantity} />
-              <DetailRow icon={<CalendarIcon />} label="Date & time" value={`${s.visitDate} · ${s.visitTime}`} />
+              <DetailRow icon={<CalendarIcon />} label={dateTimeLabel} value={`${s.visitDate} · ${s.visitTime}`} />
               <DetailRow
                 icon={<MapPinIcon />}
                 label="Location"
