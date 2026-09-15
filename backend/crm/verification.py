@@ -253,6 +253,32 @@ def verify_token(scanned: str, own_token: str, own_role: str, ip: str | None = N
 
     return {'verifiedRole': other_role, 'verifiedAt': now.isoformat(), 'subjectId': v.subjectId, 'subjectType': v.subjectType}
 
+def create_pickup(validated_data: dict, created_by=None):
+    """
+    Isolated creation step for a Pickup — kept separate from
+    PickupSerializer.create() per the original project handoff's
+    explicit requirement: "keep Pickup creation logic in a standalone
+    service function... so a future bulk-import endpoint can call the
+    exact same function in a loop instead of duplicating validation/
+    side effects." The manual single-record API view (via the
+    serializer) is the only caller today; a future PFM Excel-import
+    path should call this directly per row rather than re-deriving its
+    own creation logic.
+
+    Takes already-validated data (matching Pickup's field names) —
+    validation itself stays in PickupSerializer since DRF's own
+    validate_*() hooks are the established pattern in this codebase for
+    single-record API input. A future bulk-import caller that skips the
+    serializer is responsible for validating its own rows before
+    calling this.
+    """
+    from .models import Pickup
+    data = dict(validated_data)
+    if created_by is not None:
+        data['createdBy'] = created_by
+    return Pickup.objects.create(**data)
+
+
 def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str, str]:
     """Same shape as build_visitation_messages — winner + guide SMS."""
     visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"

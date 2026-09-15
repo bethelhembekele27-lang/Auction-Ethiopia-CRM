@@ -122,7 +122,13 @@ REST_FRAMEWORK = {
     # brute-forced or hammered. Authenticated routes are unaffected since
     # DRF only applies AnonRateThrottle to unauthenticated requests.
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "30/minute"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "30/minute",
+        # Tighter scopes for brute-force-sensitive endpoints — see
+        # crm/throttles.py for why these two specifically.
+        "login": "10/minute",
+        "pass_verify": "10/minute",
+    },
 }
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 

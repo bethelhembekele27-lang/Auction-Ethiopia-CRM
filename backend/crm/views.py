@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from .permissions import has_any_role
+from .throttles import LoginThrottle, PassVerifyThrottle
 from .models import (
     Employee, Inquiry, PERMISSIONS, Role, Followup, VisitSetup,
     Appointment, Complaint, Escalation, AuditLog, InquiryAttachment, PushSubscription,
@@ -106,6 +107,7 @@ class LoginView(APIView):
     "my own" follow-ups/escalations elsewhere in the app.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -1106,6 +1108,7 @@ class GoogleLoginView(APIView):
     "no auto-signup" requirement this enforces.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle]
 
     def post(self, request):
         serializer = GoogleLoginSerializer(data=request.data)
@@ -1209,6 +1212,7 @@ class PassVerifyView(APIView):
     of system-triggered/public entry).
     """
     permission_classes = [AllowAny]
+    throttle_classes = [PassVerifyThrottle]
 
     def post(self, request):
         scanned = request.data.get('scannedToken', '')

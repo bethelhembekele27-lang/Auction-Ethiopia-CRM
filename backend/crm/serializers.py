@@ -1002,13 +1002,15 @@ class PickupSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        from .verification import create_pickup
         request = self.context.get('request')
+        created_by = None
         if request and request.user.is_authenticated:
             try:
-                validated_data['createdBy'] = request.user.employee
+                created_by = request.user.employee
             except Employee.DoesNotExist:
                 pass
-        return Pickup.objects.create(**validated_data)
+        return create_pickup(validated_data, created_by=created_by)
 
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():
