@@ -26,6 +26,18 @@ def _smsethiopia_factory():
 _BACKENDS["smsethiopia"] = _smsethiopia_factory
 
 
+def _vonage_factory():
+    from .vonage_backend import VonageSMSSender
+    return VonageSMSSender(
+        api_key=config("VONAGE_API_KEY", default=""),
+        api_secret=config("VONAGE_API_SECRET", default=""),
+        brand_name=config("VONAGE_BRAND_NAME", default="AuctionEth"),
+    )
+
+
+_BACKENDS["vonage"] = _vonage_factory
+
+
 def get_sms_sender() -> SMSSender:
     backend_name = config("SMS_BACKEND", default="console")
     factory = _BACKENDS.get(backend_name)
