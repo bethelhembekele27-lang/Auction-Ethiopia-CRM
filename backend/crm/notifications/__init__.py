@@ -38,6 +38,18 @@ def _vonage_factory():
 _BACKENDS["vonage"] = _vonage_factory
 
 
+def _infobip_factory():
+    from .infobip_backend import InfobipSMSSender
+    return InfobipSMSSender(
+        base_url=config("INFOBIP_BASE_URL", default=""),
+        api_key=config("INFOBIP_API_KEY", default=""),
+        sender_name=config("INFOBIP_SENDER_NAME", default="AuctionEth"),
+    )
+
+
+_BACKENDS["infobip"] = _infobip_factory
+
+
 def get_sms_sender() -> SMSSender:
     backend_name = config("SMS_BACKEND", default="console")
     factory = _BACKENDS.get(backend_name)
