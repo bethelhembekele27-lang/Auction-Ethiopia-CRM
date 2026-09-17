@@ -153,8 +153,8 @@ AWS_S3_ENDPOINT_URL = config("B2_ENDPOINT_URL", default="")  # e.g. https://s3.u
 # exists() short-circuits before ever calling head_object when this is
 # True). To avoid two different uploads genuinely colliding on the same
 # filename now that the check is skipped, InquiryAttachment.file below
-# uses a UUID-prefixed upload path instead of relying on Django's
-# get_available_name() dance to de-duplicate names.
+# uses a UUID-prefixed upload path instead of relying on D
+AWS_S3_ADDRESSING_STYLE = "virtual"
 AWS_S3_FILE_OVERWRITE = True
 AWS_DEFAULT_ACL = None          # B2 doesn't use S3-style per-object ACLs
 AWS_QUERYSTRING_AUTH = True     # bucket is private — generate signed, expiring URLs
