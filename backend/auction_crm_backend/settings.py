@@ -148,7 +148,7 @@ AWS_S3_FILE_OVERWRITE = False   # never silently clobber a same-named upload
 AWS_DEFAULT_ACL = None          # B2 doesn't use S3-style per-object ACLs
 AWS_QUERYSTRING_AUTH = True     # bucket is private — generate signed, expiring URLs
 AWS_QUERYSTRING_EXPIRE = 3600   # signed URL validity, in seconds (1 hour)
-
+AWS_S3_REGION_NAME = config("B2_REGION", default="")
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3.S3Storage",
