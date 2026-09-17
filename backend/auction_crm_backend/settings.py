@@ -2,6 +2,7 @@ from pathlib import Path
 from decouple import config
 import dj_database_url
 import os
+from botocore.config import Config as BotoConfig
 
 
 from dotenv import load_dotenv
@@ -159,6 +160,10 @@ AWS_DEFAULT_ACL = None          # B2 doesn't use S3-style per-object ACLs
 AWS_QUERYSTRING_AUTH = True     # bucket is private — generate signed, expiring URLs
 AWS_QUERYSTRING_EXPIRE = 3600   # signed URL validity, in seconds (1 hour)
 AWS_S3_REGION_NAME = config("B2_REGION", default="")
+AWS_S3_CLIENT_CONFIG = BotoConfig(
+    request_checksum_calculation="when_required",
+    response_checksum_validation="when_required",
+)
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3.S3Storage",
