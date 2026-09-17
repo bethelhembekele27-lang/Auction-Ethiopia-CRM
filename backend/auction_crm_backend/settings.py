@@ -144,7 +144,17 @@ AWS_ACCESS_KEY_ID = config("B2_KEY_ID", default="")
 AWS_SECRET_ACCESS_KEY = config("B2_APPLICATION_KEY", default="")
 AWS_STORAGE_BUCKET_NAME = config("B2_BUCKET_NAME", default="")
 AWS_S3_ENDPOINT_URL = config("B2_ENDPOINT_URL", default="")  # e.g. https://s3.us-west-004.backblazeb2.com
-AWS_S3_FILE_OVERWRITE = False   # never silently clobber a same-named upload
+# Backblaze B2's S3-compatible API returns 403 (not 404) on HeadObject
+# for a non-existent key under scoped application keys — this breaks
+# django-storages' pre-upload exists() check with a hard error instead
+# of the expected "doesn't exist yet, proceed" signal. Setting
+# file_overwrite=True skips that check entirely (django-storages'
+# exists() short-circuits before ever calling head_object when this is
+# True). To avoid two different uploads genuinely colliding on the same
+# filename now that the check is skipped, InquiryAttachment.file below
+# uses a UUID-prefixed upload path instead of relying on Django's
+# get_available_name() dance to de-duplicate names.
+AWS_S3_FILE_OVERWRITE = True
 AWS_DEFAULT_ACL = None          # B2 doesn't use S3-style per-object ACLs
 AWS_QUERYSTRING_AUTH = True     # bucket is private — generate signed, expiring URLs
 AWS_QUERYSTRING_EXPIRE = 3600   # signed URL validity, in seconds (1 hour)

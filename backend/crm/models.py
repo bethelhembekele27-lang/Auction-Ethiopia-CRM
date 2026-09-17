@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+import uuid
 
 
 # =============================================================================
@@ -192,9 +193,17 @@ class Inquiry(models.Model):
 # Followup  (§3)
 # =============================================================================
 # invoices/models.py (or crm app equivalent) — new model
+def inquiry_attachment_path(instance, filename):
+    # UUID-prefixed so two uploads can never collide on the storage key,
+    # now that AWS_S3_FILE_OVERWRITE=True skips Django's own
+    # collision-avoidance check (see settings.py comment — B2's
+    # HeadObject 403-instead-of-404 quirk broke that check).
+    return f"inquiry_attachments/{uuid.uuid4().hex}_{filename}"
+
+
 class InquiryAttachment(models.Model):
     inquiry = models.ForeignKey(Inquiry, on_delete=models.CASCADE, related_name='attachment_files')
-    file = models.FileField(upload_to='inquiry_attachments/')
+    file = models.FileField(upload_to=inquiry_attachment_path)
     fileName = models.CharField(max_length=255)
     fileSize = models.IntegerField(default=0)
     uploadedAt = models.DateTimeField(auto_now_add=True)
