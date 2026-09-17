@@ -19,6 +19,29 @@ import re
 
 ET_PHONE_RE = re.compile(r'^(?:\+251|0)(9|7)\d{8}$')
 
+
+def _verification_status(subject_type, subject_id):
+    """
+    Looks up the most recent PartyVerification for this subject and
+    collapses it into one of five states for display. No verification
+    record at all means confirmation was never sent (not "not sent" as
+    in "failed" — just never triggered).
+    """
+    from .models import PartyVerification
+    v = PartyVerification.objects.filter(subjectType=subject_type, subjectId=subject_id).first()
+    if v is None:
+        return 'Not sent'
+    guide_ok = bool(v.guideVerifiedAt)
+    visitor_ok = bool(v.visitorVerifiedAt)
+    if guide_ok and visitor_ok:
+        return 'Fully verified'
+    if guide_ok:
+        return 'Guide verified'
+    if visitor_ok:
+        return 'Visitor verified'
+    return 'Sent, not verified'
+
+
 def validate_ethiopian_phone(value):
     cleaned = (value or '').replace(' ', '').replace('-', '')
     if not ET_PHONE_RE.match(cleaned):
@@ -637,6 +660,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
     id = serializers.CharField(source='publicId', read_only=True)
     setupId = serializers.CharField(required=False, allow_blank=True)
     visitTime = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'])
+    verificationStatus = serializers.SerializerMethodField()
 
     class Meta:
         model = Appointment
@@ -644,8 +668,11 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'id', 'auction', 'visitorName', 'phone', 'company',
             'visitDate', 'visitTime', 'assignedStaff', 'status', 'notes',
             'setupId', 'batch', 'guideName', 'guidePhone', 'address', 'items',
-            'quantity', 'mapsLink',
+            'quantity', 'mapsLink', 'verificationStatus',
         ]
+
+    def get_verificationStatus(self, obj):
+        return _verification_status('visitation', obj.publicId)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -984,14 +1011,18 @@ class PickupSerializer(serializers.ModelSerializer):
     id = serializers.CharField(source='publicId', read_only=True)
     pickupTime = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'])
     createdBy = serializers.CharField(source='createdBy.name', read_only=True, default='')
+    verificationStatus = serializers.SerializerMethodField()
 
     class Meta:
         model = Pickup
         fields = [
             'id', 'winnerName', 'phone', 'auction', 'itemDescription', 'quantity',
             'paymentReference', 'pickupDate', 'pickupTime', 'guideName', 'guidePhone',
-            'address', 'mapsLink', 'status', 'createdBy', 'createdAt',
+            'address', 'mapsLink', 'status', 'createdBy', 'createdAt', 'verificationStatus',
         ]
+
+    def get_verificationStatus(self, obj):
+        return _verification_status('pickup', obj.publicId)
 
     def validate_phone(self, value):
         return validate_ethiopian_phone(value)

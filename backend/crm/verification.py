@@ -33,6 +33,27 @@ VERIFICATION_VALIDITY = timedelta(days=3)
 FRONTEND_BASE_URL = config("FRONTEND_BASE_URL", default="http://localhost:5173")
 
 
+# Characters that are common in copy-pasted or auto-generated text but
+# fall outside the GSM-7 SMS alphabet — including any ONE of these
+# forces the entire message into UCS-2 encoding, cutting the per-segment
+# limit from 160 to 70 characters and multiplying segment cost. Run over
+# every outbound message right before sending, since free-text fields
+# (address, notes) can introduce these unpredictably from user input.
+_GSM7_SAFE_REPLACEMENTS = {
+    "—": "-", "–": "-",           # em/en dash
+    "\u2018": "'", "\u2019": "'",  # curly single quotes
+    "\u201c": '"', "\u201d": '"',  # curly double quotes
+    "\u2026": "...",               # ellipsis
+    "\xa0": " ",                   # non-breaking space
+}
+
+
+def to_gsm7_safe(text: str) -> str:
+    for bad, good in _GSM7_SAFE_REPLACEMENTS.items():
+        text = text.replace(bad, good)
+    return text
+
+
 def _generate_token() -> str:
     return secrets.token_urlsafe(32)
 
@@ -70,36 +91,35 @@ def create_verification(subject_type: str, subject_id: str, expires_at=None) -> 
 
 
 def build_visitation_messages(appointment, verification: PartyVerification) -> tuple[str, str]:
-    """
-    Pure string-building, no side effects — easy to unit test and safe
-    to call speculatively (e.g. for a preview) without sending anything.
-    Returns (visitor_message, guide_message).
-    """
     visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
     guide_link = f"{FRONTEND_BASE_URL}/g/{verification.guideToken}"
 
     location_bits = [appointment.address] if appointment.address else []
     if appointment.mapsLink:
         location_bits.append(appointment.mapsLink)
-    location = "-".join(location_bits) or "Location to be confirmed"
+    location = " - ".join(location_bits) or "Location to be confirmed"
 
     what = appointment.batch or appointment.auction or "your item"
     qty_suffix = f" (qty: {appointment.quantity})" if appointment.quantity else ""
 
     visitor_message = (
-        f"Auction Ethiopia: your visit to view {what}{qty_suffix} is set for "
-        f"{appointment.visitDate} at {appointment.visitTime}. "
-        f"Location: {location}. Guide: {appointment.guideName or '—'} "
-        f"({appointment.guidePhone or '—'}). Your visit pass (QR + code): {visitor_link}"
+        f"Auction Ethiopia - Visit Confirmed\n"
+        f"{what}{qty_suffix}\n"
+        f"{appointment.visitDate} at {appointment.visitTime}\n"
+        f"Location: {location}\n"
+        f"Guide: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
+        f"Your pass: {visitor_link}"
     )
 
     guide_message = (
-        f"Auction Ethiopia: {appointment.visitorName} ({appointment.phone}) is "
-        f"scheduled to view {what}{qty_suffix} on {appointment.visitDate} at "
-        f"{appointment.visitTime}. Verify them here: {guide_link}"
+        f"Auction Ethiopia - Verify Visitor\n"
+        f"{appointment.visitorName} ({appointment.phone})\n"
+        f"Viewing {what}{qty_suffix}\n"
+        f"{appointment.visitDate} at {appointment.visitTime}\n"
+        f"Verify: {guide_link}"
     )
 
-    return visitor_message, guide_message
+    return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
 
 
 def send_and_log(subject_type: str, subject_id: str, recipient_role: str, phone: str, message: str) -> NotificationLog:
@@ -280,7 +300,6 @@ def create_pickup(validated_data: dict, created_by=None):
 
 
 def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str, str]:
-    """Same shape as build_visitation_messages — winner + guide SMS."""
     visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
     guide_link = f"{FRONTEND_BASE_URL}/g/{verification.guideToken}"
 
@@ -291,17 +310,22 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
 
     what = pickup.itemDescription or pickup.auction or "your item(s)"
     qty_suffix = f" (qty: {pickup.quantity})" if pickup.quantity else ""
-    ref_suffix = f" Ref: {pickup.paymentReference}." if pickup.paymentReference else ""
+    ref_line = f"Ref: {pickup.paymentReference}\n" if pickup.paymentReference else ""
 
     visitor_message = (
-        f"Auction Ethiopia: your pickup for {what}{qty_suffix} is set for "
-        f"{pickup.pickupDate} at {pickup.pickupTime}.{ref_suffix} "
-        f"Location: {location}. Guide: {pickup.guideName or '—'} "
-        f"({pickup.guidePhone or '—'}). Your pickup pass (QR + code): {visitor_link}"
+        f"Auction Ethiopia - Pickup Confirmed\n"
+        f"{what}{qty_suffix}\n"
+        f"{pickup.pickupDate} at {pickup.pickupTime}\n"
+        f"{ref_line}"
+        f"Location: {location}\n"
+        f"Guide: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
+        f"Your pass: {visitor_link}"
     )
     guide_message = (
-        f"Auction Ethiopia: {pickup.winnerName} ({pickup.phone}) is scheduled to "
-        f"collect {what}{qty_suffix} on {pickup.pickupDate} at {pickup.pickupTime}. "
-        f"Verify them here: {guide_link}"
+        f"Auction Ethiopia - Verify Pickup\n"
+        f"{pickup.winnerName} ({pickup.phone})\n"
+        f"Collecting {what}{qty_suffix}\n"
+        f"{pickup.pickupDate} at {pickup.pickupTime}\n"
+        f"Verify: {guide_link}"
     )
-    return visitor_message, guide_message
+    return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)

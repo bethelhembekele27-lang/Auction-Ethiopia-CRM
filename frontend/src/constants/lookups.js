@@ -28,6 +28,14 @@ export const APPT_STAMP = {
   Requested: "amber", Approved: "blue", Confirmed: "brass", Completed: "green", Cancelled: "gray", "No Show": "red",
 };
 
+export const VERIFICATION_STAMP = {
+  "Not sent": "gray",
+  "Sent, not verified": "amber",
+  "Guide verified": "blue",
+  "Visitor verified": "blue",
+  "Fully verified": "green",
+};
+
 // Follow-up outcome: a call starts "Pending" until the operator edits it and
 // records what actually happened — only these three outcomes are choosable.
 export const FOLLOWUP_STATUSES = ["Satisfied", "Not Satisfied", "No Show"];

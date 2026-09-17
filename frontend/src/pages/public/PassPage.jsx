@@ -12,6 +12,90 @@ import { logo, stamp } from "../../constants/assets";
 // QR is rendered CLIENT-SIDE from `data.ownToken` (see backend
 // verification.py's Phase 2 docstring for why — avoids a Pillow
 // dependency on the Django backend for no real benefit here).
+
+const STRINGS = {
+  en: {
+    visitPass: "Visit pass",
+    pickupPass: "Pickup pass",
+    guideVerification: "Guide verification",
+    guideVerificationPickup: "Guide verification — pickup",
+    visitorPassBadge: "Visitor Pass",
+    guidePassBadge: "Guide Pass",
+    pickupPassBadge: "Pickup Pass",
+    visitor: "Visitor",
+    winner: "Winner",
+    dateTime: "Date & time",
+    pickupDateTime: "Pickup date & time",
+    location: "Location",
+    openInMaps: "Open in Maps",
+    assignedGuide: "Assigned guide",
+    yourCode: "Your code",
+    showToGuide: "Show this to the guide to verify you.",
+    guideConfirmed: "Guide confirmed",
+    youreVerified: "You're verified",
+    identityVerifiedOnSite: "Identity verified on-site.",
+    identityConfirmedBy: (role) => `Your identity was confirmed by the ${role}.`,
+    scanCode: (role) => `Scan the ${role}'s code`,
+    optionalVerify: (role) => `Optional — also verify the ${role}`,
+    openCamera: "Open camera",
+    cancelScanning: "Cancel scanning",
+    orEnterManually: "or enter manually",
+    sixDigitCode: "6-digit code",
+    verify: "Verify",
+    auction: "Auction",
+    batch: "Batch",
+    items: "Item(s)",
+    quantity: "Quantity",
+    guideRole: "guide",
+    visitorRole: "visitor",
+    loading: "Loading…",
+    linkWrongFooter: "If this looks wrong, ask the call center to resend your confirmation.",
+    verifiedSuccessfully: (role) => `${role} verified successfully.`,
+    verificationFailed: "Verification failed.",
+    cameraFailed: "Couldn't access the camera — use the 6-digit code below instead.",
+  },
+  am: {
+    visitPass: "የጉብኝት ማለፊያ",
+    pickupPass: "የመውሰጃ ማለፊያ",
+    guideVerification: "የአስጎብኚ ማረጋገጫ",
+    guideVerificationPickup: "የአስጎብኚ ማረጋገጫ — መውሰጃ",
+    visitorPassBadge: "ጎብኚ ማለፊያ",
+    guidePassBadge: "የአስጎብኚ ማለፊያ",
+    pickupPassBadge: "የመውሰጃ ማለፊያ",
+    visitor: "ጎብኚ",
+    winner: "አሸናፊ",
+    dateTime: "ቀን እና ሰዓት",
+    pickupDateTime: "የመውሰጃ ቀን እና ሰዓት",
+    location: "አካባቢ",
+    openInMaps: "በካርታ ላይ ይክፈቱ",
+    assignedGuide: "የተመደበ አስጎብኚ",
+    yourCode: "ኮድዎ",
+    showToGuide: "ለ አስጎብኚው ለማረጋገጥ ይህን ያሳዩት።",
+    guideConfirmed: "አስጎብኚው አረጋግጧል",
+    youreVerified: "ተረጋግጠዋል",
+    identityVerifiedOnSite: "ማንነት በቦታው ላይ ተረጋግጧል።",
+    identityConfirmedBy: (role) => `ማንነትዎ በ${role} ተረጋግጧል።`,
+    scanCode: (role) => `የ${role} ኮድ ይቃኙ`,
+    optionalVerify: (role) => `አማራጭ — እንዲሁም ${role} ያረጋግጡ`,
+    openCamera: "ካሜራ ይክፈቱ",
+    cancelScanning: "ስካን ይሰርዝ",
+    orEnterManually: "ወይም በእጅ ያስገቡ",
+    sixDigitCode: "ባለ 6-አሃዝ ኮድ",
+    verify: "ያረጋግጡ",
+    auction: "ጨረታ",
+    batch: "የጨረታ ቡድን",
+    items: "እቃ(ዎች)",
+    quantity: "ብዛት",
+    guideRole: "አስጎብኚ",
+    visitorRole: "ጎብኚ",
+    loading: "በመጫን ላይ…",
+    linkWrongFooter: "ይህ ስህተት መስሎ ከታየ፣ ጥሪ ማዕከሉ ማረጋገጫዎን ደግሞ እንዲልክልዎ ይጠይቁ።",
+    verifiedSuccessfully: (role) => `${role} በተሳካ ሁኔታ ተረጋግጧል።`,
+    verificationFailed: "ማረጋገጥ አልተሳካም።",
+    cameraFailed: "ካሜራውን መድረስ አልተቻለም — ከታች ያለውን ባለ 6-አሃዝ ኮድ ይጠቀሙ።",
+  },
+};
+
 export default function PassPage({ token }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -19,7 +103,9 @@ export default function PassPage({ token }) {
   const [scanning, setScanning] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState("");
   const [manualCode, setManualCode] = useState("");
+  const [lang, setLang] = useState("en");
   const scannerRef = useRef(null);
+  const t = STRINGS[lang];
 
   useEffect(() => {
     getPass(token)
@@ -34,14 +120,6 @@ export default function PassPage({ token }) {
   const QR_SIZE = 196;
   useEffect(() => {
     if (data?.ownToken && data?.role) {
-      // Encode a full URL, not a bare token — a bare token means nothing
-      // to a phone's stock camera app (nothing to tap/open), so anyone
-      // who doesn't already know to use this page's own "Open camera"
-      // scanner gets a dead end. Encoding the real pass-page URL means
-      // a stock camera at least offers a working link to open (landing
-      // on the scanned party's own pass, which is still a legitimate
-      // visual-match fallback), while extractToken() below keeps the
-      // in-app scanner working exactly as before either way.
       const rolePath = data.role === "visitor" ? "v" : "g";
       const passUrl = `${window.location.origin}/${rolePath}/${data.ownToken}`;
       QRCode.toDataURL(passUrl, {
@@ -67,11 +145,12 @@ export default function PassPage({ token }) {
   async function submitScan(scannedValue) {
     try {
       const res = await verifyPass({ scannedToken: extractToken(scannedValue), ownToken: token, ownRole: data.role });
-      setVerifyMsg(`${res.verifiedRole === "guide" ? "Guide" : "Visitor"} verified successfully.`);
+      const roleLabel = res.verifiedRole === "guide" ? t.guideRole : t.visitorRole;
+      setVerifyMsg(t.verifiedSuccessfully(roleLabel));
       const refreshed = await getPass(token);
       setData(refreshed);
     } catch (e) {
-      setVerifyMsg(e.body?.message || "Verification failed.");
+      setVerifyMsg(e.body?.message || t.verificationFailed);
     }
   }
 
@@ -95,7 +174,7 @@ export default function PassPage({ token }) {
           () => {}
         );
       } catch {
-        setVerifyMsg("Couldn't access the camera — use the 6-digit code below instead.");
+        setVerifyMsg(t.cameraFailed);
         setScanning(false);
       }
     }, 50);
@@ -142,16 +221,24 @@ export default function PassPage({ token }) {
     <svg width="20" height="20" viewBox="0 0 24 24" {...ic} {...p}><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
   );
 
-  // Standalone page — outside the app shell, but index.css (Tailwind +
-  // the app's --brass/--panel/etc CSS vars + Space Grotesk/Inter fonts)
-  // is already loaded globally via main.jsx, so reuse the same design
-  // language as the rest of the CRM rather than inventing a new one.
   const shellCls = "min-h-screen w-full bg-[color:var(--paper)] flex items-start justify-center py-10 px-4";
   const cardCls = "relative w-full max-w-[460px] bg-[color:var(--panel)] border border-[color:var(--border)] rounded-2xl shadow-[0_16px_40px_rgba(20,23,28,0.14)] overflow-hidden";
 
-  // Ticket-style "perforated" divider between the details block and the
-  // QR block — two page-colored notches punched into the card's edges
-  // plus a dashed rule, mimicking a torn ticket stub.
+  // Language toggle — small pill, sits next to the badge in the header.
+  function LangToggle({ className }) {
+    return (
+      <button
+        onClick={() => setLang(lang === "en" ? "am" : "en")}
+        className={
+          "text-[11px] font-semibold px-2.5 py-1 rounded-full border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text-2)] cursor-pointer shrink-0 " +
+          (className || "")
+        }
+      >
+        {lang === "en" ? "አማርኛ" : "English"}
+      </button>
+    );
+  }
+
   function TicketDivider() {
     return (
       <div className="relative -mx-6 my-6">
@@ -162,10 +249,6 @@ export default function PassPage({ token }) {
     );
   }
 
-  // Detail rows use a NEUTRAL icon tile (paper bg + border), not brass —
-  // brass stays reserved for the avatar, links, and buttons. Uniformly
-  // tinting every row the brand color is what made the previous pass
-  // read as busy/decorative rather than clean.
   function DetailRow({ icon, label, value }) {
     if (!value) return null;
     return (
@@ -188,7 +271,7 @@ export default function PassPage({ token }) {
             <AlertIcon />
           </div>
           <p className="font-display text-[15px] font-semibold text-[color:var(--text)]">{error}</p>
-          <p className="text-[13px] text-[color:var(--text-3)] mt-1.5">If this looks wrong, ask the call center to resend your confirmation.</p>
+          <p className="text-[13px] text-[color:var(--text-3)] mt-1.5">{t.linkWrongFooter}</p>
         </div>
       </div>
     );
@@ -198,7 +281,7 @@ export default function PassPage({ token }) {
       <div className={shellCls}>
         <div className="text-[13px] text-[color:var(--text-2)] flex items-center gap-2 mt-10">
           <span className="w-3.5 h-3.5 rounded-full border-2 border-[color:var(--brass)] border-t-transparent animate-spin" />
-          Loading…
+          {t.loading}
         </div>
       </div>
     );
@@ -206,14 +289,14 @@ export default function PassPage({ token }) {
 
   const s = data.subject;
   const isVisitor = data.role === "visitor";
-  const otherRoleLabel = isVisitor ? "Guide" : "Visitor";
+  const otherRoleLabel = isVisitor ? t.guideRole : t.visitorRole;
   const visitorInitial = (s.visitorName || "?").trim().charAt(0).toUpperCase();
 
   const isPickup = data.subjectType === "pickup";
-  const passTypeLabel = isPickup ? "Pickup Pass" : "Visitor Pass"; // top-right badge, still swaps to "Guide Pass" below for guides
-  const heroTitle = isPickup ? "Pickup pass" : "Visit pass";
-  const partyLabel = isPickup ? "Winner" : "Visitor"; // "VISITOR" small-caps label above the name
-  const dateTimeLabel = isPickup ? "Pickup date & time" : "Date & time";
+  const passTypeLabel = isPickup ? t.pickupPassBadge : t.visitorPassBadge;
+  const heroTitle = isPickup ? t.pickupPass : t.visitPass;
+  const partyLabel = isPickup ? t.winner : t.visitor;
+  const dateTimeLabel = isPickup ? t.pickupDateTime : t.dateTime;
 
   return (
     <div className={shellCls}>
@@ -225,12 +308,15 @@ export default function PassPage({ token }) {
         <div className="px-6 pt-6 pb-5 border-b border-[color:var(--border)] bg-[color:var(--paper)]">
           <div className="flex items-start justify-between gap-3 mb-4">
             <img src={logo} alt="Auction Ethiopia" className="h-9 w-auto" />
-            <span className="inline-flex items-center font-mono font-semibold text-[10.5px] tracking-[0.06em] uppercase px-3 py-1.5 rounded-full text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)]">
-              {isVisitor ? passTypeLabel : "Guide Pass"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center font-mono font-semibold text-[10.5px] tracking-[0.06em] uppercase px-3 py-1.5 rounded-full text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)]">
+                {isVisitor ? passTypeLabel : t.guidePassBadge}
+              </span>
+              <LangToggle />
+            </div>
           </div>
           <h1 className="font-display text-[22px] font-semibold tracking-[-0.01em] text-[color:var(--text)] m-0">
-            {isVisitor ? heroTitle : (isPickup ? "Guide verification — pickup" : "Guide verification")}
+            {isVisitor ? heroTitle : (isPickup ? t.guideVerificationPickup : t.guideVerification)}
           </h1>
           <p className="text-[12.5px] text-[color:var(--text-2)] mt-0.5 mb-0">
             {s.company || "Auction Ethiopia (general)"}
@@ -246,7 +332,7 @@ export default function PassPage({ token }) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[10px] uppercase tracking-[0.05em] text-[color:var(--text-3)]">
-                  {isVisitor ? partyLabel : `${partyLabel} to verify`}
+                  {isVisitor ? partyLabel : `${partyLabel}`}
                 </div>
                 <div className="font-display font-semibold text-[15.5px] text-[color:var(--text)] truncate">{s.visitorName}</div>
               </div>
@@ -256,14 +342,14 @@ export default function PassPage({ token }) {
             </div>
 
             <div className="divide-y divide-[color:var(--border)]/60">
-              <DetailRow icon={<TagIcon />} label="Auction" value={s.auction} />
-              <DetailRow icon={<TagIcon />} label="Batch" value={s.batch} />
-              <DetailRow icon={<BoxIcon />} label="Item(s)" value={s.items} />
-              <DetailRow icon={<BoxIcon />} label="Quantity" value={s.quantity} />
+              <DetailRow icon={<TagIcon />} label={t.auction} value={s.auction} />
+              <DetailRow icon={<TagIcon />} label={t.batch} value={s.batch} />
+              <DetailRow icon={<BoxIcon />} label={t.items} value={s.items} />
+              <DetailRow icon={<BoxIcon />} label={t.quantity} value={s.quantity} />
               <DetailRow icon={<CalendarIcon />} label={dateTimeLabel} value={`${s.visitDate} · ${s.visitTime}`} />
               <DetailRow
                 icon={<MapPinIcon />}
-                label="Location"
+                label={t.location}
                 value={
                   <>
                     {s.address || "To be confirmed"}
@@ -276,7 +362,7 @@ export default function PassPage({ token }) {
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-[color:var(--blue)] font-semibold no-underline hover:underline underline-offset-2"
                         >
-                          <MapPinIcon /> Open in Maps
+                          <MapPinIcon /> {t.openInMaps}
                         </a>
                       </>
                     )}
@@ -286,7 +372,7 @@ export default function PassPage({ token }) {
               {isVisitor && (
                 <DetailRow
                   icon={<UserIcon />}
-                  label="Assigned guide"
+                  label={t.assignedGuide}
                   value={<>{s.guideName || "—"} {s.guidePhone && <span className="font-mono">({s.guidePhone})</span>}</>}
                 />
               )}
@@ -298,7 +384,7 @@ export default function PassPage({ token }) {
           {/* Own QR + code */}
           <div className="relative z-10 text-center mb-6">
             <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[color:var(--text-2)] mb-3 flex items-center justify-center gap-1.5">
-              <ClockIcon /> Your code
+              <ClockIcon /> {t.yourCode}
             </div>
             {qrDataUrl && (
               <div className="inline-block p-3.5 bg-white border border-[color:var(--border)] rounded-xl">
@@ -316,22 +402,12 @@ export default function PassPage({ token }) {
               {data.ownCode}
             </div>
             <p className="text-[12px] text-[color:var(--text-3)] mt-1">
-              Show this to the {otherRoleLabel.toLowerCase()} to verify you.
+              {t.showToGuide}
             </p>
           </div>
 
           <div className="relative z-10 h-px bg-[color:var(--border)] mb-6" />
 
-          {/* Verification status / scanner.
-              - The stamp shows once EITHER direction is done — "I
-                scanned them" (otherVerified) or "they scanned me"
-                (ownVerified) both mean this visit is checked in.
-              - The scan/manual-entry option is shown independently,
-                whenever otherVerified is still false — even after
-                ownVerified flips true — since mutual verification is
-                optional, not required, and someone who's already been
-                confirmed shouldn't lose the ability to confirm the
-                other party back if they want to. */}
           <div className="relative z-10">
           {(data.otherVerified || data.ownVerified) && (
             <div className="relative flex items-center gap-4 bg-[color:var(--green-bg)] rounded-xl py-4 px-5 overflow-hidden">
@@ -343,12 +419,12 @@ export default function PassPage({ token }) {
               />
               <div className="text-left">
                 <div className="text-[14px] font-semibold text-[color:var(--text)]">
-                  {data.otherVerified ? `${otherRoleLabel} confirmed` : "You're verified"}
+                  {data.otherVerified ? t.guideConfirmed : t.youreVerified}
                 </div>
                 <div className="text-[12px] text-[color:var(--text-2)] mt-0.5">
                   {data.otherVerified
-                    ? "Identity verified on-site."
-                    : `Your identity was confirmed by the ${otherRoleLabel.toLowerCase()}.`}
+                    ? t.identityVerifiedOnSite
+                    : t.identityConfirmedBy(otherRoleLabel)}
                 </div>
               </div>
             </div>
@@ -357,7 +433,7 @@ export default function PassPage({ token }) {
           {!data.otherVerified && (
             <div className={data.ownVerified ? "mt-4" : ""}>
               <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[color:var(--text-2)] mb-3 text-center">
-                {data.ownVerified ? `Optional — also verify the ${otherRoleLabel.toLowerCase()}` : `Scan the ${otherRoleLabel.toLowerCase()}'s code`}
+                {data.ownVerified ? t.optionalVerify(otherRoleLabel) : t.scanCode(otherRoleLabel)}
               </div>
 
               {!scanning ? (
@@ -365,14 +441,14 @@ export default function PassPage({ token }) {
                   onClick={startScan}
                   className="w-full font-sans text-[13.5px] font-semibold py-2.5 rounded-[8px] bg-[color:var(--brass)] text-white border border-[color:var(--brass)] cursor-pointer hover:bg-[color:var(--brass-dark)] hover:border-[color:var(--brass-dark)] transition-colors flex items-center justify-center gap-2"
                 >
-                  <CameraIcon /> Open camera
+                  <CameraIcon /> {t.openCamera}
                 </button>
               ) : (
                 <button
                   onClick={stopScan}
                   className="w-full font-sans text-[13.5px] font-medium py-2.5 rounded-[8px] bg-[color:var(--panel)] text-[color:var(--text)] border border-[color:var(--border)] cursor-pointer hover:border-[color:var(--text-3)] transition-colors"
                 >
-                  Cancel scanning
+                  {t.cancelScanning}
                 </button>
               )}
 
@@ -380,14 +456,14 @@ export default function PassPage({ token }) {
 
               <div className="flex items-center gap-2 my-4">
                 <div className="flex-1 h-px bg-[color:var(--border)]" />
-                <span className="text-[10.5px] text-[color:var(--text-3)] uppercase tracking-[0.05em]">or enter manually</span>
+                <span className="text-[10.5px] text-[color:var(--text-3)] uppercase tracking-[0.05em]">{t.orEnterManually}</span>
                 <div className="flex-1 h-px bg-[color:var(--border)]" />
               </div>
 
               <div className="flex gap-2">
                 <input
                   maxLength={6}
-                  placeholder="6-digit code"
+                  placeholder={t.sixDigitCode}
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value.replace(/\D/g, ""))}
                   className="flex-1 font-mono text-[16px] tracking-[0.25em] text-center px-3 py-2.5 border border-[color:var(--border)] rounded-[8px] bg-[color:var(--panel)] text-[color:var(--text)] focus:outline-none focus:border-[color:var(--brass)]"
@@ -397,7 +473,7 @@ export default function PassPage({ token }) {
                   onClick={() => submitScan(manualCode)}
                   className="font-sans text-[13.5px] font-semibold px-5 rounded-[8px] bg-[color:var(--brass)] text-white border border-[color:var(--brass)] cursor-pointer hover:bg-[color:var(--brass-dark)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  Verify
+                  {t.verify}
                 </button>
               </div>
             </div>
@@ -407,7 +483,7 @@ export default function PassPage({ token }) {
             <div
               className={
                 "mt-4 text-[13px] font-medium px-3.5 py-2.5 rounded-md " +
-                (verifyMsg.includes("successfully")
+                (verifyMsg.includes("successfully") || verifyMsg.includes("ተሳክ")
                   ? "bg-[color:var(--green-bg)] text-[color:var(--green)]"
                   : "bg-[color:var(--red-bg)] text-[color:var(--red)]")
               }

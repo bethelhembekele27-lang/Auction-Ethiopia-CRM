@@ -31,7 +31,7 @@ class Command(BaseCommand):
                 status__in=["Pending", "Not Satisfied"],
                 date__lte=today,
                 assignedOperator__isnull=False,
-                assignedOperator__role_id=2,
+                assignedOperator__role__key='call_operator',
             )
             .select_related("assignedOperator__user")
         )

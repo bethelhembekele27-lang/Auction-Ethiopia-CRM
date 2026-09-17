@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { fmtDate, todayISO } from "../utils/format";
+import { VERIFICATION_STAMP } from "../constants/lookups";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
@@ -200,6 +201,7 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
                   <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th>
                   <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Time</th>
                   <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Verification</th>
                   <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
                 </tr></thead>
                 <tbody>
@@ -212,6 +214,9 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(p.pickupDate)}</td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{p.pickupTime}</td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.guideName || "—"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.guidePhone}</div></td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        <Stamp text={p.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[p.verificationStatus] || "gray"} />
+                      </td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={p.status} kind={PICKUP_STAMP[p.status]} /></td>
                     </tr>
                   ))}

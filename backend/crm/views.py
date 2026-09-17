@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
-from .permissions import has_any_role
+from .permissions import has_any_role, RoleRequiredAPIView, ROLES_ANY_AUTHENTICATED_USER, ROLES_PUBLIC
 from .throttles import LoginThrottle, PassVerifyThrottle
 from .models import (
     Employee, Inquiry, PERMISSIONS, Role, Followup, VisitSetup,
@@ -97,7 +97,7 @@ def log_audit(request, action, previous_value='—', new_value='', reason=''):
 # Auth  (§1)
 # =============================================================================
 
-class LoginView(APIView):
+class LoginView(RoleRequiredAPIView):
     """
     POST /api/auth/login/ — no auth required to hit this one.
     Response: { token, user: { username, role, operatorName } }
@@ -106,7 +106,7 @@ class LoginView(APIView):
     field the model has — it must match exactly what's used to filter
     "my own" follow-ups/escalations elsewhere in the app.
     """
-    permission_classes = [AllowAny]
+    required_roles = ROLES_PUBLIC
     throttle_classes = [LoginThrottle]
 
     def post(self, request):
@@ -133,12 +133,12 @@ class LoginView(APIView):
         })
 
 
-class LogoutView(APIView):
+class LogoutView(RoleRequiredAPIView):
     """
     POST /api/auth/logout/ -> 204 No Content.
     Deletes the current token so it can no longer authenticate.
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def post(self, request):
         Token.objects.filter(user=request.user).delete()
@@ -150,9 +150,9 @@ class LogoutView(APIView):
 # the frontend was calling, which 404'd since no such route ever existed)
 # =============================================================================
 
-class ChangePasswordView(APIView):
+class ChangePasswordView(RoleRequiredAPIView):
     """PATCH /api/account/change-password/ — { oldPassword, newPassword }."""
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def patch(self, request):
         serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
@@ -162,9 +162,9 @@ class ChangePasswordView(APIView):
         return Response({'message': 'Password updated.'})
 
 
-class UpdateUsernameView(APIView):
+class UpdateUsernameView(RoleRequiredAPIView):
     """PATCH /api/account/username/ — { username } for the current user."""
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def patch(self, request):
         prev_username = request.user.username
@@ -175,14 +175,14 @@ class UpdateUsernameView(APIView):
         return Response({'username': user.username})
 
 
-class EmployeeResetPasswordView(APIView):
+class EmployeeResetPasswordView(RoleRequiredAPIView):
     """
     POST /api/employees/<id>/reset-password/ — administrator only,
     { newPassword }. For an admin resetting someone ELSE's password
     (lockout recovery) — no old password required, unlike self-service
     change-password above.
     """
-    permission_classes = [IsAuthenticated, has_any_role('administrator')]
+    required_roles = ('administrator',)
 
     def post(self, request, employee_id):
         try:
@@ -201,8 +201,8 @@ class EmployeeResetPasswordView(APIView):
 # Roles
 # =============================================================================
 
-class RoleListCreateView(APIView):
-    permission_classes = [IsAuthenticated]
+class RoleListCreateView(RoleRequiredAPIView):
+    method_roles = {'GET': ROLES_ANY_AUTHENTICATED_USER, 'POST': ('administrator',)}
 
     def get(self, request):
         if request.query_params.get('full'):
@@ -212,8 +212,6 @@ class RoleListCreateView(APIView):
         return Response(keys)
 
     def post(self, request):
-        if not has_any_role('administrator')().has_permission(request, self):
-            return Response({'message': 'Only an Administrator can create roles.'}, status=http_status.HTTP_403_FORBIDDEN)
         serializer = RoleCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         role = serializer.save()
@@ -221,13 +219,13 @@ class RoleListCreateView(APIView):
         return Response({'key': role.key, 'name': role.name}, status=http_status.HTTP_201_CREATED)
 
 
-class RoleDeleteView(APIView):
+class RoleDeleteView(RoleRequiredAPIView):
     """
     DELETE /api/roles/<key>/ — administrator only. Refuses built-in roles,
     and refuses if any employee currently holds this role — reassignment
     is a deliberate separate action, never a silent side effect of delete.
     """
-    permission_classes = [IsAuthenticated, has_any_role('administrator')]
+    required_roles = ('administrator',)
 
     def delete(self, request, role_key):
         try:
@@ -255,20 +253,18 @@ class RoleDeleteView(APIView):
 # Employees
 # =============================================================================
 
-class EmployeeListCreateView(APIView):
+class EmployeeListCreateView(RoleRequiredAPIView):
     """
     GET  /api/employees/  -> open to any authenticated user
     POST /api/employees/  -> administrator only (spec §8).
     """
-    permission_classes = [IsAuthenticated]
+    method_roles = {'GET': ROLES_ANY_AUTHENTICATED_USER, 'POST': ('administrator',)}
 
     def get(self, request):
         employees = Employee.objects.select_related('user', 'role').order_by('name')
         return Response(EmployeeSerializer(employees, many=True).data)
 
     def post(self, request):
-        if not has_any_role('administrator')().has_permission(request, self):
-            return Response({'message': 'Only an Administrator can create employees.'}, status=http_status.HTTP_403_FORBIDDEN)
 
         serializer = EmployeeCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -279,7 +275,7 @@ class EmployeeListCreateView(APIView):
         )
         return Response(EmployeeSerializer(employee).data, status=http_status.HTTP_201_CREATED)
 
-class EmployeeDetailView(APIView):
+class EmployeeDetailView(RoleRequiredAPIView):
     """
     SECURITY: patch() previously had no role check at all beyond
     IsAuthenticated — meaning ANY logged-in employee (any role, including
@@ -294,11 +290,9 @@ class EmployeeDetailView(APIView):
     endpoint (see AccountSettingsModal / the account/change-password and
     account/update endpoints), never this one.
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ('administrator',)
 
     def patch(self, request, employee_id):
-        if not has_any_role('administrator')().has_permission(request, self):
-            return Response({'message': 'Only an Administrator can edit other employees.'}, status=http_status.HTTP_403_FORBIDDEN)
         try:
             employee = Employee.objects.select_related('user').get(publicId=employee_id)
         except Employee.DoesNotExist:
@@ -331,8 +325,6 @@ class EmployeeDetailView(APIView):
         return Response(EmployeeSerializer(employee).data)
     
     def delete(self, request, employee_id):
-        if not has_any_role('administrator')().has_permission(request, self):
-            return Response({'message': 'Only an Administrator can delete employees.'}, status=http_status.HTTP_403_FORBIDDEN)
         try:
             employee = Employee.objects.select_related('user').get(publicId=employee_id)
         except Employee.DoesNotExist:
@@ -344,9 +336,8 @@ class EmployeeDetailView(APIView):
 
 
 
-class EmployeePrivilegesView(APIView):
-
-    permission_classes = [IsAuthenticated, has_any_role('administrator')]
+class EmployeePrivilegesView(RoleRequiredAPIView):
+    required_roles = ('administrator',)
     def patch(self, request, employee_id):
         try:
             employee = Employee.objects.select_related('user').get(publicId=employee_id)
@@ -379,13 +370,13 @@ class EmployeePrivilegesView(APIView):
 # Inquiries
 # =============================================================================
 
-class InquiryListCreateView(APIView):
+class InquiryListCreateView(RoleRequiredAPIView):
     """
     GET  /api/inquiries/?category=&priority=&status=&operator=&q=
          `q` is free-text across callerName, phone, company, publicId.
     POST /api/inquiries/
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
         qs = Inquiry.objects.all().order_by('-dateTime')
@@ -420,8 +411,8 @@ class InquiryListCreateView(APIView):
         log_audit(request, 'Log inquiry', '—', f'{inquiry.publicId} created', f'{inquiry.category} from {inquiry.callerName}')
         return Response(InquirySerializer(inquiry, context={'request': request}).data, status=http_status.HTTP_201_CREATED)
 
-class InquiryDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+class InquiryDetailView(RoleRequiredAPIView):
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get_object(self, inquiry_id):
         try:
@@ -453,8 +444,6 @@ class InquiryDetailView(APIView):
         return Response(InquirySerializer(updated, context={'request': request}).data)
 
     def delete(self, request, inquiry_id):
-        if not has_any_role('administrator')().has_permission(request, self):
-            return Response({'message': 'Only an Administrator can delete inquiries.'}, status=http_status.HTTP_403_FORBIDDEN)
         inquiry = self.get_object(inquiry_id)
         if inquiry is None: 
             return Response({'message': 'Inquiry not found.'}, status=http_status.HTTP_404_NOT_FOUND)
@@ -464,9 +453,13 @@ class InquiryDetailView(APIView):
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
-class InquiryAttachmentView(APIView):
+class InquiryAttachmentView(RoleRequiredAPIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsAuthenticated]
+    method_roles = {
+        'GET': ROLES_ANY_AUTHENTICATED_USER,
+        'POST': ('administrator', 'call_operator', 'auction_manager'),
+        'DELETE': ('administrator', 'call_operator', 'auction_manager'),
+    }
 
     def post(self, request, inquiry_id):
         inquiry = get_object_or_404(Inquiry, publicId=inquiry_id)
@@ -537,12 +530,12 @@ class InquiryAttachmentView(APIView):
 # Followups  (§3)
 # =============================================================================
 
-class FollowupListCreateView(APIView):
+class FollowupListCreateView(RoleRequiredAPIView):
     """
     GET  /api/followups/?operator=&status=&reminder=
     POST /api/followups/
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
         qs = Followup.objects.all().order_by('date')
@@ -571,12 +564,12 @@ class FollowupListCreateView(APIView):
         return Response(FollowupSerializer(followup).data, status=http_status.HTTP_201_CREATED)
 
 
-class FollowupDetailView(APIView):
+class FollowupDetailView(RoleRequiredAPIView):
     """
     PATCH /api/followups/<publicId>/ — update a follow-up.
     DELETE /api/followups/<publicId>/ — delete a follow-up.
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def patch(self, request, followup_id):
         try:
@@ -637,13 +630,13 @@ class FollowupDetailView(APIView):
 # Visit Setups  (§6)
 # =============================================================================
 
-class VisitSetupListCreateView(APIView):
+class VisitSetupListCreateView(RoleRequiredAPIView):
     """
     GET  /api/visit-setups/?q=  — q searches company, batch, guide name, ID.
     POST /api/visit-setups/     — createdBy/createdDate are server-set,
                                    never accepted from the client.
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
         qs = VisitSetup.objects.all().order_by('-createdDate')
@@ -668,9 +661,9 @@ class VisitSetupListCreateView(APIView):
         return Response(VisitSetupSerializer(visit_setup).data, status=http_status.HTTP_201_CREATED)
 
 
-class VisitSetupDetailView(APIView):
+class VisitSetupDetailView(RoleRequiredAPIView):
     """PATCH /api/visit-setups/<publicId>/ — partial updates."""
-    permission_classes = [IsAuthenticated]
+    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator',)}
 
     def patch(self, request, visit_setup_id):
         try:
@@ -685,8 +678,6 @@ class VisitSetupDetailView(APIView):
         return Response(VisitSetupSerializer(updated).data)
     
     def delete(self, request, visit_setup_id):
-        if not has_any_role('administrator')().has_permission(request, self):
-            return Response({'message': 'Only an Administrator can delete visit setups.'}, status=http_status.HTTP_403_FORBIDDEN)
         try:
             vs = VisitSetup.objects.get(publicId=visit_setup_id)
         except VisitSetup.DoesNotExist:
@@ -701,13 +692,13 @@ class VisitSetupDetailView(APIView):
 # Appointments / Visitations  (§4)
 # =============================================================================
 
-class AppointmentListCreateView(APIView):
+class AppointmentListCreateView(RoleRequiredAPIView):
     """
     GET  /api/appointments/?status=&auction=
     POST /api/appointments/ — auto-creates the linked day-after follow-up
                                server-side (see AppointmentSerializer.create).
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
         qs = Appointment.objects.all().order_by('visitDate')
@@ -733,9 +724,9 @@ class AppointmentListCreateView(APIView):
         return Response(AppointmentSerializer(appointment).data, status=http_status.HTTP_201_CREATED)
 
 
-class AppointmentDetailView(APIView):
+class AppointmentDetailView(RoleRequiredAPIView):
     """PATCH /api/appointments/<publicId>/ — partial updates."""
-    permission_classes = [IsAuthenticated]
+    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager')}
 
     def patch(self, request, appointment_id):
         try:
@@ -757,8 +748,6 @@ class AppointmentDetailView(APIView):
         return Response(AppointmentSerializer(updated).data)
     
     def delete(self, request, appointment_id):
-        if not has_any_role('administrator', 'auction_manager')().has_permission(request, self):
-            return Response({'message': 'You do not have permission to delete visitations.'}, status=http_status.HTTP_403_FORBIDDEN)
         try:
             appt = Appointment.objects.get(publicId=appointment_id)
         except Appointment.DoesNotExist:
@@ -769,7 +758,7 @@ class AppointmentDetailView(APIView):
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
-class AppointmentSendConfirmationView(APIView):
+class AppointmentSendConfirmationView(RoleRequiredAPIView):
     """
     POST /api/appointments/<id>/send-confirmation/
 
@@ -786,7 +775,7 @@ class AppointmentSendConfirmationView(APIView):
     entry is written summarizing the outcome, matching how every other
     state-changing view in this file logs to AuditLog.
     """
-    permission_classes = [IsAuthenticated, has_any_role('administrator', 'call_operator', 'auction_manager')]
+    required_roles = ('administrator', 'call_operator', 'auction_manager')
 
     def post(self, request, appointment_id):
         try:
@@ -815,8 +804,8 @@ class AppointmentSendConfirmationView(APIView):
 
 
 
-class PickupListCreateView(APIView):
-    permission_classes = [IsAuthenticated]
+class PickupListCreateView(RoleRequiredAPIView):
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
         qs = Pickup.objects.all().order_by('pickupDate')
@@ -834,8 +823,8 @@ class PickupListCreateView(APIView):
         return Response(PickupSerializer(pickup).data, status=http_status.HTTP_201_CREATED)
 
 
-class PickupDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+class PickupDetailView(RoleRequiredAPIView):
+    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager')}
 
     def patch(self, request, pickup_id):
         try:
@@ -852,8 +841,6 @@ class PickupDetailView(APIView):
         return Response(PickupSerializer(updated).data)
 
     def delete(self, request, pickup_id):
-        if not has_any_role('administrator', 'auction_manager')().has_permission(request, self):
-            return Response({'message': 'You do not have permission to delete pickups.'}, status=http_status.HTTP_403_FORBIDDEN)
         try:
             pu = Pickup.objects.get(publicId=pickup_id)
         except Pickup.DoesNotExist:
@@ -864,9 +851,9 @@ class PickupDetailView(APIView):
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
-class PickupSendConfirmationView(APIView):
+class PickupSendConfirmationView(RoleRequiredAPIView):
     """Mirrors AppointmentSendConfirmationView exactly."""
-    permission_classes = [IsAuthenticated, has_any_role('administrator', 'call_operator', 'auction_manager')]
+    required_roles = ('administrator', 'call_operator', 'auction_manager')
 
     def post(self, request, pickup_id):
         try:
@@ -897,13 +884,13 @@ class PickupSendConfirmationView(APIView):
 # Complaints  (§5)
 # =============================================================================
 
-class ComplaintListCreateView(APIView):
+class ComplaintListCreateView(RoleRequiredAPIView):
     """
     GET  /api/complaints/?status=
     POST /api/complaints/ — callerName and description required (enforced
                              by the model).
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
         qs = Complaint.objects.all().order_by('-date')
@@ -922,12 +909,12 @@ class ComplaintListCreateView(APIView):
         return Response(ComplaintSerializer(complaint).data, status=http_status.HTTP_201_CREATED)
 
 
-class ComplaintDetailView(APIView):
+class ComplaintDetailView(RoleRequiredAPIView):
     """
     PATCH /api/complaints/<publicId>/ — if status is set to "Resolved"
     without resolutionDate, Complaint.save() defaults it to today.
     """
-    permission_classes = [IsAuthenticated]
+    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager')}
 
     def patch(self, request, complaint_id):
         try:
@@ -962,8 +949,6 @@ class ComplaintDetailView(APIView):
         return Response(ComplaintSerializer(updated).data)
     
     def delete(self, request, complaint_id):
-        if not has_any_role('administrator', 'auction_manager')().has_permission(request, self):
-            return Response({'message': 'You do not have permission to delete complaints.'}, status=http_status.HTTP_403_FORBIDDEN)
         try:
             c = Complaint.objects.get(publicId=complaint_id)
         except Complaint.DoesNotExist:
@@ -978,7 +963,7 @@ class ComplaintDetailView(APIView):
 # Escalations / "Manager Requests"  (§7)
 # =============================================================================
 
-class EscalationListCreateView(APIView):
+class EscalationListCreateView(RoleRequiredAPIView):
     """
     GET  /api/escalations/ — role-scoped server-side, NOT client-filtered:
          call_operator sees only escalations they personally created;
@@ -986,7 +971,7 @@ class EscalationListCreateView(APIView):
     POST /api/escalations/ — only valid when the related inquiry's
          priority is "Urgent" (checked in EscalationSerializer.validate).
     """
-    permission_classes = [IsAuthenticated]
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
         role_key = _role_key_for(request.user)
@@ -1022,12 +1007,12 @@ class EscalationListCreateView(APIView):
         return Response(EscalationSerializer(escalation).data, status=http_status.HTTP_201_CREATED)
 
 
-class EscalationResolveView(APIView):
+class EscalationResolveView(RoleRequiredAPIView):
     """
     PATCH /api/escalations/<publicId>/resolve/ — auction_manager /
     administrator only (spec §7).
     """
-    permission_classes = [IsAuthenticated, has_any_role('auction_manager', 'administrator')]
+    required_roles = ('auction_manager', 'administrator')
 
     def patch(self, request, escalation_id):
         try:
@@ -1064,12 +1049,12 @@ class EscalationResolveView(APIView):
 # Audit Log  (§10)
 # =============================================================================
 
-class AuditLogListView(APIView):
+class AuditLogListView(RoleRequiredAPIView):
     """
     GET /api/audit/?from=&to=&user=&action=
     administrator and auction_manager only (spec §10).
     """
-    permission_classes = [IsAuthenticated, has_any_role('administrator', 'auction_manager')]
+    required_roles = ('administrator', 'auction_manager')
 
     def get(self, request):
         qs = AuditLog.objects.all().order_by('-actionDate')
@@ -1090,24 +1075,22 @@ class AuditLogListView(APIView):
 
         return Response(AuditLogSerializer(qs, many=True).data)
 
-class AuditLogClearView(APIView):
-    permission_classes = [IsAuthenticated]
+class AuditLogClearView(RoleRequiredAPIView):
+    required_roles = ('administrator',)
 
     def delete(self, request):
-        if not has_any_role('administrator')().has_permission(request, self):
-            return Response({'message': 'Only an Administrator can clear the audit trail.'}, status=http_status.HTTP_403_FORBIDDEN)
         count, _ = AuditLog.objects.all().delete()
         return Response({'deleted': count})
 
 
-class GoogleLoginView(APIView):
+class GoogleLoginView(RoleRequiredAPIView):
     """
     POST /api/auth/google/ — { id_token }.
     Same response shape as POST /auth/login/: { token, user: { username,
     role, operatorName } }. See GoogleLoginSerializer docstring for the
     "no auto-signup" requirement this enforces.
     """
-    permission_classes = [AllowAny]
+    required_roles = ROLES_PUBLIC
     throttle_classes = [LoginThrottle]
 
     def post(self, request):
@@ -1133,8 +1116,8 @@ class GoogleLoginView(APIView):
             },
         })
 
-class PushSubscribeView(APIView):
-    permission_classes = [IsAuthenticated]
+class PushSubscribeView(RoleRequiredAPIView):
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def post(self, request):
         serializer = PushSubscriptionSerializer(data=request.data, context={'request': request})
@@ -1143,8 +1126,8 @@ class PushSubscribeView(APIView):
         return Response({'message': 'Subscribed.'}, status=http_status.HTTP_201_CREATED)
 
 
-class PushUnsubscribeView(APIView):
-    permission_classes = [IsAuthenticated]
+class PushUnsubscribeView(RoleRequiredAPIView):
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def post(self, request):
         endpoint = request.data.get('endpoint')
@@ -1152,14 +1135,14 @@ class PushUnsubscribeView(APIView):
         return Response({'message': 'Unsubscribed.'})
 
 
-class VapidPublicKeyView(APIView):
-    permission_classes = [IsAuthenticated]
+class VapidPublicKeyView(RoleRequiredAPIView):
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
         return Response({'publicKey': os.environ.get('VAPID_PUBLIC_KEY', '')})
 
 
-class TriggerFollowupRemindersView(APIView):
+class TriggerFollowupRemindersView(RoleRequiredAPIView):
     """
     POST /api/internal/send-followup-reminders/ — called once a day by a
     GitHub Actions scheduled workflow (or any external free cron pinger).
@@ -1168,7 +1151,7 @@ class TriggerFollowupRemindersView(APIView):
     command, just triggerable over HTTP since Render's free tier has no
     free cron product.
     """
-    permission_classes = [AllowAny]
+    required_roles = ROLES_PUBLIC
 
     def post(self, request):
         secret = request.headers.get('X-Cron-Secret')
@@ -1184,14 +1167,14 @@ class TriggerFollowupRemindersView(APIView):
 # Verification & Notification — Phase 2 (public pass pages)
 # =============================================================================
 
-class PassResolveView(APIView):
+class PassResolveView(RoleRequiredAPIView):
     """
     GET /api/pass/<token>/ — PUBLIC. Resolves a visitor/guide token to
     that party's display payload (see verification.resolve_pass). No
     auth — the token itself is the credential (opaque, unguessable,
     time-limited), same trust model as a password-reset link.
     """
-    permission_classes = [AllowAny]
+    required_roles = ROLES_PUBLIC
 
     def get(self, request, token):
         try:
@@ -1201,7 +1184,7 @@ class PassResolveView(APIView):
         return Response(data)
 
 
-class PassVerifyView(APIView):
+class PassVerifyView(RoleRequiredAPIView):
     """
     POST /api/pass/verify/ — PUBLIC. { scannedToken, ownToken, ownRole }.
     Marks the OTHER party (relative to ownRole) as verified. Logs one
@@ -1211,7 +1194,7 @@ class PassVerifyView(APIView):
     that's fine, AuditLog.performedBy is nullable for exactly this kind
     of system-triggered/public entry).
     """
-    permission_classes = [AllowAny]
+    required_roles = ROLES_PUBLIC
     throttle_classes = [PassVerifyThrottle]
 
     def post(self, request):
