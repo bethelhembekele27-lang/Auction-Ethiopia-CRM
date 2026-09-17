@@ -24,3 +24,4 @@ whitenoise==6.12.0
 pywebpush==2.0.1
 django-storages[s3]==1.14.4
 boto3==1.35.99
+botocore==1.35.99
