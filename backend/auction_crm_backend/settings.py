@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',   # <-- add this if missing
     'corsheaders',
     "crm",  # your app
+    "storages",
 ]
 
 MIDDLEWARE = [
@@ -134,3 +135,25 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Backblaze B2 (S3-compatible) storage for uploaded attachments.
+# Static files (CSS/JS) are untouched — still served by WhiteNoise from
+# STATIC_ROOT, same as before. Only MEDIA (user-uploaded files) moves off
+# the ephemeral Render disk and onto B2, so attachments survive redeploys.
+AWS_ACCESS_KEY_ID = config("B2_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = config("B2_APPLICATION_KEY", default="")
+AWS_STORAGE_BUCKET_NAME = config("B2_BUCKET_NAME", default="")
+AWS_S3_ENDPOINT_URL = config("B2_ENDPOINT_URL", default="")  # e.g. https://s3.us-west-004.backblazeb2.com
+AWS_S3_FILE_OVERWRITE = False   # never silently clobber a same-named upload
+AWS_DEFAULT_ACL = None          # B2 doesn't use S3-style per-object ACLs
+AWS_QUERYSTRING_AUTH = True     # bucket is private — generate signed, expiring URLs
+AWS_QUERYSTRING_EXPIRE = 3600   # signed URL validity, in seconds (1 hour)
+
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3.S3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
