@@ -163,6 +163,8 @@ AWS_S3_REGION_NAME = config("B2_REGION", default="")
 AWS_S3_CLIENT_CONFIG = BotoConfig(
     signature_version="s3v4",
     s3={"payload_signing_enabled": False},
+    max_pool_connections=1,
+    retries={"max_attempts": 0},
 )
 STORAGES = {
     "default": {

@@ -13,6 +13,7 @@ class SimpleS3Storage(S3Storage):
     small attachment files this app handles (not large multi-GB files).
     """
     def _save(self, name, content):
+        print(f"SimpleS3Storage._save() called for: {name}")
         cleaned_name = clean_name(name)
         name = self._normalize_name(cleaned_name)
         content.seek(0)
