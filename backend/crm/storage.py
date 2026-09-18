@@ -25,13 +25,16 @@ class SimpleS3Storage(S3Storage):
             extra['ContentType'] = content_type
 
         obj = self.bucket.Object(name)
-        # Disable the "Expect: 100-continue" handshake — some S3-compatible
-        # servers (including Backblaze B2) mishandle it, closing the
-        # connection instead of properly acknowledging it.
         client = obj.meta.client
-        client.meta.events.register(
-            'before-sign.s3.PutObject',
-            lambda request, **kwargs: request.headers.pop('Expect', None)
-        )
+
+        def _strip_expect_header(request, **kwargs):
+            # HTTPHeaders is a MutableMapping, not a dict — no .pop(). Use
+            # 'in' + del instead. Disabling the Expect: 100-continue
+            # handshake since Backblaze B2 appears to mishandle it (closes
+            # the connection instead of responding), per prior investigation.
+            if 'Expect' in request.headers:
+                del request.headers['Expect']
+
+        client.meta.events.register('before-sign.s3.PutObject', _strip_expect_header)
         obj.put(Body=data, **extra)
         return cleaned_name
