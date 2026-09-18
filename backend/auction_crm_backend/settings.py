@@ -166,7 +166,7 @@ AWS_S3_CLIENT_CONFIG = BotoConfig(
 )
 STORAGES = {
     "default": {
-        "BACKEND": "storages.backends.s3.S3Storage",
+        "BACKEND": "crm.storage.SimpleS3Storage",
     },
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
