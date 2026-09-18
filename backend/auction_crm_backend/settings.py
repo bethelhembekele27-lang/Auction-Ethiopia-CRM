@@ -2,7 +2,7 @@ from pathlib import Path
 from decouple import config
 import dj_database_url
 import os
-from botocore.config import Config as BotoConfig
+from botocore.client import Config as BotoConfig
 
 
 from dotenv import load_dotenv
@@ -161,8 +161,8 @@ AWS_QUERYSTRING_AUTH = True     # bucket is private — generate signed, expirin
 AWS_QUERYSTRING_EXPIRE = 3600   # signed URL validity, in seconds (1 hour)
 AWS_S3_REGION_NAME = config("B2_REGION", default="")
 AWS_S3_CLIENT_CONFIG = BotoConfig(
-    request_checksum_calculation="when_required",
-    response_checksum_validation="when_required",
+    signature_version="s3v4",
+    s3={"payload_signing_enabled": False},
 )
 STORAGES = {
     "default": {
