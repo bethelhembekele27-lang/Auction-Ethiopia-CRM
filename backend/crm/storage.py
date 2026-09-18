@@ -24,5 +24,14 @@ class SimpleS3Storage(S3Storage):
         if content_type:
             extra['ContentType'] = content_type
 
-        self.bucket.Object(name).put(Body=data, **extra)
+        obj = self.bucket.Object(name)
+        # Disable the "Expect: 100-continue" handshake — some S3-compatible
+        # servers (including Backblaze B2) mishandle it, closing the
+        # connection instead of properly acknowledging it.
+        client = obj.meta.client
+        client.meta.events.register(
+            'before-sign.s3.PutObject',
+            lambda request, **kwargs: request.headers.pop('Expect', None)
+        )
+        obj.put(Body=data, **extra)
         return cleaned_name
