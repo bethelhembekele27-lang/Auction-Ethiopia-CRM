@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from .permissions import has_any_role, RoleRequiredAPIView, ROLES_ANY_AUTHENTICATED_USER, ROLES_PUBLIC
-import requests as _debug_requests
 from .throttles import LoginThrottle, PassVerifyThrottle
 from .models import (
     Employee, Inquiry, PERMISSIONS, Role, Followup, VisitSetup,
@@ -1217,46 +1216,3 @@ class PassVerifyView(RoleRequiredAPIView):
             ipAddress=request.META.get('REMOTE_ADDR'),
         )
         return Response(result)
-
-
-# =============================================================================
-# TEMPORARY DEBUG VIEW — delete after diagnosing the B2 issue
-# =============================================================================
-
-class B2NetworkTestView(RoleRequiredAPIView):
-    required_roles = ROLES_PUBLIC  # temporary — public so you can test via browser URL
-
-    def get(self, request):
-        results = {}
-
-        # Test 1: plain GET to the B2 host, no auth needed to test round-trip
-        try:
-            r = _debug_requests.get(
-                "https://s3.us-east-005.backblazeb2.com",
-                timeout=15,
-            )
-            results['get_test'] = {
-                'ok': True,
-                'status_code': r.status_code,
-                'response_length': len(r.content),
-            }
-        except Exception as e:
-            results['get_test'] = {'ok': False, 'error': f'{type(e).__name__}: {e}'}
-
-        # Test 2: PUT with a body (unauthenticated — expect a 403/error response,
-        # but the point is whether the HTTP round-trip completes at all)
-        try:
-            r = _debug_requests.put(
-                "https://s3.us-east-005.backblazeb2.com/auction-ethiopia-crm-files/debug-test.txt",
-                data=b"hello from render debug test",
-                timeout=15,
-            )
-            results['put_test'] = {
-                'ok': True,
-                'status_code': r.status_code,
-                'response_length': len(r.content),
-            }
-        except Exception as e:
-            results['put_test'] = {'ok': False, 'error': f'{type(e).__name__}: {e}'}
-
-        return Response(results)

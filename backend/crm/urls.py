@@ -4,7 +4,7 @@ from .views import (
     InquiryAttachmentView,RoleListCreateView,FollowupListCreateView,FollowupDetailView,VisitSetupListCreateView,VisitSetupDetailView,AppointmentListCreateView,AppointmentDetailView,
     AppointmentSendConfirmationView,ComplaintListCreateView,ComplaintDetailView,EscalationListCreateView,EscalationResolveView,AuditLogListView,AuditLogClearView,GoogleLoginView,
     RoleDeleteView,ChangePasswordView,UpdateUsernameView,PushSubscribeView,PushUnsubscribeView, VapidPublicKeyView,TriggerFollowupRemindersView,PassResolveView,PassVerifyView,
-    PickupListCreateView, PickupDetailView, PickupSendConfirmationView, B2NetworkTestView,
+    PickupListCreateView, PickupDetailView, PickupSendConfirmationView,
 )
 
 urlpatterns = [
@@ -56,9 +56,6 @@ urlpatterns = [
     # Phase 2 — public pass pages (no auth; token/code is the credential)
     path('pass/verify/', PassVerifyView.as_view(), name='pass-verify'),
     path('pass/<str:token>/', PassResolveView.as_view(), name='pass-resolve'),
-
-    # TEMPORARY DEBUG — delete after diagnosing B2 issue
-    path('debug/b2-network-test/', B2NetworkTestView.as_view()),
 
     path('pickups', PickupListCreateView.as_view(), name='pickup-list-create'),
     path('pickups/<str:pickup_id>', PickupDetailView.as_view(), name='pickup-detail'),
