@@ -24,7 +24,7 @@ from .notifications import get_sms_sender
 
 # How long a visitor/guide pass stays valid after an appointment's
 # confirmation is sent — 3 days, per product decision.
-VERIFICATION_VALIDITY = timedelta(days=3)
+VERIFICATION_VALIDITY = timedelta(days=21)
 
 # Where the public pass pages are served from (the frontend app, not this
 # API) — e.g. "https://auction-ethiopia-crm.example.com". No default
