@@ -53,28 +53,61 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   const sel = useRowSelection((a) => a.id);
   const { pending, confirm, cancel, run } = useConfirm();
 
-  // Manual "Send confirmation" trigger (visitor + guide SMS) — never
-  // fired automatically on create/edit, per product decision.
+  // Preview modal state for confirmation sending
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewItems, setPreviewItems] = useState([]);
+  const [previewError, setPreviewError] = useState("");
   const [confirmSending, setConfirmSending] = useState(false);
-  const [confirmNotice, setConfirmNotice] = useState(null); // { kind: 'ok'|'error', text }
+  const [confirmNotice, setConfirmNotice] = useState(null);
 
-  async function sendConfirmationFor(a) {
+  async function openPreview() {
+    const rows = sel.selectedFrom(sorted);
+    if (!rows.length) return;
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const results = await Promise.all(
+        rows.map((a) => appointmentsApi.previewConfirmation(a.id).then((r) => ({ ...r, name: a.visitorName })))
+      );
+      setPreviewItems(results);
+    } catch (err) {
+      setPreviewError(err.body?.message || "Couldn't load preview — try again.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function sendConfirmationSelected() {
+    const rows = sel.selectedFrom(sorted);
+    if (!rows.length) return;
     setConfirmSending(true);
     setConfirmNotice(null);
     try {
-      const res = await appointmentsApi.sendConfirmation(a.id);
-      const guidePart = res.guide ? `, guide ${res.guide.status}` : ", no guide phone on file — guide SMS skipped";
-      addAudit("Send visitation confirmation", "—", a.id, `${a.visitorName} · visitor ${res.visitor.status}${guidePart}`);
-      setConfirmNotice({ kind: "ok", text: `Confirmation sent for ${a.id} — visitor ${res.visitor.status}${guidePart}.` });
+      const { results } = await appointmentsApi.sendConfirmationBulk(rows.map((a) => a.id));
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      results.forEach((r) => {
+        const row = rows.find((a) => a.id === r.id);
+        if (row && r.ok) {
+          const guidePart = r.guide ? `, guide ${r.guide.status}` : ", no guide phone on file — guide SMS skipped";
+          addAudit("Send visitation confirmation", "—", r.id, `${row.visitorName} · visitor ${r.visitor.status}${guidePart}`);
+        }
+      });
+      setConfirmNotice({
+        kind: failCount ? "error" : "ok",
+        text: failCount
+          ? `${okCount} sent, ${failCount} failed. Check individual records for details.`
+          : `Confirmation sent for ${okCount} record${okCount === 1 ? "" : "s"}.`,
+      });
+      setPreviewOpen(false);
+      sel.clear();
     } catch (err) {
       setConfirmNotice({ kind: "error", text: err.body?.message || "Couldn't send confirmation — try again." });
     } finally {
       setConfirmSending(false);
     }
-  }
-  function sendConfirmationSelected() {
-    const rows = sel.selectedFrom(sorted);
-    if (rows.length === 1) sendConfirmationFor(rows[0]);
   }
 
   async function bulkDelete() {
@@ -313,8 +346,8 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
             <EditIcon /><span>Edit</span>
           </button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1 || confirmSending} onClick={sendConfirmationSelected} title="Sends the visitor + guide SMS with their visit pass links">
-            <SendIcon /><span>{confirmSending ? "Sending…" : "Send confirmation"}</span>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={openPreview}>
+            <SendIcon /><span>Send confirmation</span>
           </button>
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--blue)] bg-[color:var(--blue-bg)] text-[color:var(--blue)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Confirmed")}>
             <CheckIcon /><span>Mark Confirmed</span>
@@ -501,6 +534,46 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
+
+      <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title="Preview confirmation" wide>
+        {previewLoading ? (
+          <div style={{ fontSize: 13, color: "var(--text-3)", padding: "20px 0" }}>Loading preview…</div>
+        ) : previewError ? (
+          <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md">{previewError}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: 420, overflowY: "auto" }}>
+            {previewItems.map((item) => (
+              <div key={item.id} className="bg-[color:var(--paper)] border border-[color:var(--border)] rounded-[8px] p-3">
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{item.id} — {item.name}</div>
+                <div style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>Visitor SMS</div>
+                <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, fontFamily: "inherit", margin: "0 0 10px", color: "var(--text-2)" }}>{item.visitorMessage}</pre>
+                {item.guideMessage && (
+                  <>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>Guide SMS</div>
+                    <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, fontFamily: "inherit", margin: 0, color: "var(--text-2)" }}>{item.guideMessage}</pre>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
+          <button
+            className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={previewLoading || !!previewError || confirmSending}
+            onClick={sendConfirmationSelected}
+          >
+            {confirmSending ? "Sending…" : `Send to ${previewItems.length} record${previewItems.length === 1 ? "" : "s"}`}
+          </button>
+          <button
+            className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-transparent cursor-pointer"
+            onClick={() => setPreviewOpen(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
+
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );

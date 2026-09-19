@@ -24,3 +24,11 @@ export function deleteAppointment(id) {
 export function sendConfirmation(id) {
   return api.post(`/appointments/${id}/send-confirmation/`);
 }
+
+export function previewConfirmation(id) {
+  return api.get(`/appointments/${id}/preview-confirmation/`);
+}
+
+export function sendConfirmationBulk(ids) {
+  return api.post("/appointments/send-confirmation-bulk/", { ids });
+}

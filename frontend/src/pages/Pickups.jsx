@@ -34,6 +34,11 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   const sel = useRowSelection((p) => p.id);
   const { pending, confirm, cancel, run } = useConfirm();
 
+  // Preview modal state for confirmation sending
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewItems, setPreviewItems] = useState([]);
+  const [previewError, setPreviewError] = useState("");
   const [confirmSending, setConfirmSending] = useState(false);
   const [confirmNotice, setConfirmNotice] = useState(null);
 
@@ -49,23 +54,53 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   const filtered = fStatus === "All" ? pickups : pickups.filter((p) => p.status === fStatus);
   const sorted = [...filtered].sort((a, b) => new Date(a.pickupDate) - new Date(b.pickupDate));
 
-  async function sendConfirmationFor(p) {
+  async function openPreview() {
+    const rows = sel.selectedFrom(sorted);
+    if (!rows.length) return;
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const results = await Promise.all(
+        rows.map((p) => pickupsApi.previewConfirmation(p.id).then((r) => ({ ...r, name: p.winnerName })))
+      );
+      setPreviewItems(results);
+    } catch (err) {
+      setPreviewError(err.body?.message || "Couldn't load preview — try again.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function sendConfirmationSelected() {
+    const rows = sel.selectedFrom(sorted);
+    if (!rows.length) return;
     setConfirmSending(true);
     setConfirmNotice(null);
     try {
-      const res = await pickupsApi.sendConfirmation(p.id);
-      const guidePart = res.guide ? `, guide ${res.guide.status}` : ", no guide phone on file — guide SMS skipped";
-      addAudit("Send pickup confirmation", "—", p.id, `${p.winnerName} · winner ${res.visitor.status}${guidePart}`);
-      setConfirmNotice({ kind: "ok", text: `Confirmation sent for ${p.id} — winner ${res.visitor.status}${guidePart}.` });
+      const { results } = await pickupsApi.sendConfirmationBulk(rows.map((p) => p.id));
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      results.forEach((r) => {
+        const row = rows.find((p) => p.id === r.id);
+        if (row && r.ok) {
+          const guidePart = r.guide ? `, guide ${r.guide.status}` : ", no guide phone on file — guide SMS skipped";
+          addAudit("Send pickup confirmation", "—", r.id, `${row.winnerName} · winner ${r.visitor.status}${guidePart}`);
+        }
+      });
+      setConfirmNotice({
+        kind: failCount ? "error" : "ok",
+        text: failCount
+          ? `${okCount} sent, ${failCount} failed. Check individual records for details.`
+          : `Confirmation sent for ${okCount} record${okCount === 1 ? "" : "s"}.`,
+      });
+      setPreviewOpen(false);
+      sel.clear();
     } catch (err) {
       setConfirmNotice({ kind: "error", text: err.body?.message || "Couldn't send confirmation — try again." });
     } finally {
       setConfirmSending(false);
     }
-  }
-  function sendConfirmationSelected() {
-    const rows = sel.selectedFrom(sorted);
-    if (rows.length === 1) sendConfirmationFor(rows[0]);
   }
 
   async function bulkDelete() {
@@ -158,8 +193,8 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
             <EditIcon /><span>Edit</span>
           </button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1 || confirmSending} onClick={sendConfirmationSelected} title="Sends the winner + guide SMS with their pickup pass links">
-            <SendIcon /><span>{confirmSending ? "Sending…" : "Send confirmation"}</span>
+          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={openPreview}>
+            <SendIcon /><span>Send confirmation</span>
           </button>
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Completed")}>
             <CheckIcon /><span>Mark Completed</span>
@@ -255,6 +290,46 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
+
+      <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title="Preview confirmation" wide>
+        {previewLoading ? (
+          <div style={{ fontSize: 13, color: "var(--text-3)", padding: "20px 0" }}>Loading preview…</div>
+        ) : previewError ? (
+          <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md">{previewError}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: 420, overflowY: "auto" }}>
+            {previewItems.map((item) => (
+              <div key={item.id} className="bg-[color:var(--paper)] border border-[color:var(--border)] rounded-[8px] p-3">
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{item.id} — {item.name}</div>
+                <div style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>Visitor SMS</div>
+                <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, fontFamily: "inherit", margin: "0 0 10px", color: "var(--text-2)" }}>{item.visitorMessage}</pre>
+                {item.guideMessage && (
+                  <>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>Guide SMS</div>
+                    <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, fontFamily: "inherit", margin: 0, color: "var(--text-2)" }}>{item.guideMessage}</pre>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
+          <button
+            className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={previewLoading || !!previewError || confirmSending}
+            onClick={sendConfirmationSelected}
+          >
+            {confirmSending ? "Sending…" : `Send to ${previewItems.length} record${previewItems.length === 1 ? "" : "s"}`}
+          </button>
+          <button
+            className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-transparent cursor-pointer"
+            onClick={() => setPreviewOpen(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
+
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );

@@ -2,9 +2,9 @@ from django.urls import path
 from .views import (
     LoginView,LogoutView,EmployeeDetailView,EmployeeListCreateView,EmployeePrivilegesView,EmployeeResetPasswordView,InquiryDetailView,InquiryListCreateView,
     InquiryAttachmentView,RoleListCreateView,FollowupListCreateView,FollowupDetailView,VisitSetupListCreateView,VisitSetupDetailView,AppointmentListCreateView,AppointmentDetailView,
-    AppointmentSendConfirmationView,ComplaintListCreateView,ComplaintDetailView,EscalationListCreateView,EscalationResolveView,AuditLogListView,AuditLogClearView,GoogleLoginView,
+    AppointmentSendConfirmationView,AppointmentPreviewConfirmationView,AppointmentBulkSendConfirmationView,ComplaintListCreateView,ComplaintDetailView,EscalationListCreateView,EscalationResolveView,AuditLogListView,AuditLogClearView,GoogleLoginView,
     RoleDeleteView,ChangePasswordView,UpdateUsernameView,PushSubscribeView,PushUnsubscribeView, VapidPublicKeyView,TriggerFollowupRemindersView,PassResolveView,PassVerifyView,
-    PickupListCreateView, PickupDetailView, PickupSendConfirmationView,
+    PickupListCreateView, PickupDetailView, PickupSendConfirmationView, PickupPreviewConfirmationView, PickupBulkSendConfirmationView,
 )
 
 urlpatterns = [
@@ -60,4 +60,6 @@ urlpatterns = [
     path('pickups', PickupListCreateView.as_view(), name='pickup-list-create'),
     path('pickups/<str:pickup_id>', PickupDetailView.as_view(), name='pickup-detail'),
     path('pickups/<str:pickup_id>/send-confirmation/', PickupSendConfirmationView.as_view(), name='pickup-send-confirmation'),
+    path('pickups/<str:pickup_id>/preview-confirmation/', PickupPreviewConfirmationView.as_view(), name='pickup-preview-confirmation'),
+    path('pickups/send-confirmation-bulk/', PickupBulkSendConfirmationView.as_view(), name='pickup-bulk-send-confirmation'),
 ]

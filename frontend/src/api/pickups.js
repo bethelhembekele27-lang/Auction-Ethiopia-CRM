@@ -16,3 +16,11 @@ export function deletePickup(id) {
 export function sendConfirmation(id) {
   return api.post(`/pickups/${id}/send-confirmation/`);
 }
+
+export function previewConfirmation(id) {
+  return api.get(`/pickups/${id}/preview-confirmation/`);
+}
+
+export function sendConfirmationBulk(ids) {
+  return api.post("/pickups/send-confirmation-bulk/", { ids });
+}
