@@ -33,6 +33,8 @@ urlpatterns = [
     path('appointments', AppointmentListCreateView.as_view(), name='appointment-list-create'),
     path('appointments/<str:appointment_id>', AppointmentDetailView.as_view(), name='appointment-detail'),
     path('appointments/<str:appointment_id>/send-confirmation/', AppointmentSendConfirmationView.as_view(), name='appointment-send-confirmation'),
+    path('appointments/<str:appointment_id>/preview-confirmation/', AppointmentPreviewConfirmationView.as_view(), name='appointment-preview-confirmation'),
+    path('appointments/send-confirmation-bulk/', AppointmentBulkSendConfirmationView.as_view(), name='appointment-send-confirmation-bulk'),
 
     path('complaints', ComplaintListCreateView.as_view(), name='complaint-list-create'),
     path('complaints/<str:complaint_id>', ComplaintDetailView.as_view(), name='complaint-detail'),
@@ -61,5 +63,5 @@ urlpatterns = [
     path('pickups/<str:pickup_id>', PickupDetailView.as_view(), name='pickup-detail'),
     path('pickups/<str:pickup_id>/send-confirmation/', PickupSendConfirmationView.as_view(), name='pickup-send-confirmation'),
     path('pickups/<str:pickup_id>/preview-confirmation/', PickupPreviewConfirmationView.as_view(), name='pickup-preview-confirmation'),
-    path('pickups/send-confirmation-bulk/', PickupBulkSendConfirmationView.as_view(), name='pickup-bulk-send-confirmation'),
+    path('pickups/send-confirmation-bulk/', PickupBulkSendConfirmationView.as_view(), name='pickup-send-confirmation-bulk'),
 ]

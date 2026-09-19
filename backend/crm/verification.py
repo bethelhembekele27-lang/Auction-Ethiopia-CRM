@@ -329,3 +329,68 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
         f"Verify: {guide_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
+
+
+def build_visitation_preview(appointment) -> tuple[str, str]:
+    """
+    Same content as build_visitation_messages(), but uses a placeholder
+    for the pass link instead of a real token — no PartyVerification is
+    created, so calling this has zero side effects and can't be sent
+    accidentally. Used by the preview modal before a real send.
+    """
+    location_bits = [appointment.address] if appointment.address else []
+    if appointment.mapsLink:
+        location_bits.append(appointment.mapsLink)
+    location = " - ".join(location_bits) or "Location to be confirmed"
+
+    what = appointment.batch or appointment.auction or "your item"
+    qty_suffix = f" (qty: {appointment.quantity})" if appointment.quantity else ""
+    placeholder_link = "[pass link generated when sent]"
+
+    visitor_message = (
+        f"Auction Ethiopia - Visit Confirmed\n"
+        f"{what}{qty_suffix}\n"
+        f"{appointment.visitDate} at {appointment.visitTime}\n"
+        f"Location: {location}\n"
+        f"Guide: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
+        f"Your pass: {placeholder_link}"
+    )
+    guide_message = (
+        f"Auction Ethiopia - Verify Visitor\n"
+        f"{appointment.visitorName} ({appointment.phone})\n"
+        f"Viewing {what}{qty_suffix}\n"
+        f"{appointment.visitDate} at {appointment.visitTime}\n"
+        f"Verify: {placeholder_link}"
+    )
+    return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
+
+
+def build_pickup_preview(pickup) -> tuple[str, str]:
+    """Same as build_visitation_preview, for pickups. No side effects."""
+    location_bits = [pickup.address] if pickup.address else []
+    if pickup.mapsLink:
+        location_bits.append(pickup.mapsLink)
+    location = " - ".join(location_bits) or "Location to be confirmed"
+
+    what = pickup.itemDescription or pickup.auction or "your item(s)"
+    qty_suffix = f" (qty: {pickup.quantity})" if pickup.quantity else ""
+    ref_line = f"Ref: {pickup.paymentReference}\n" if pickup.paymentReference else ""
+    placeholder_link = "[pass link generated when sent]"
+
+    visitor_message = (
+        f"Auction Ethiopia - Pickup Confirmed\n"
+        f"{what}{qty_suffix}\n"
+        f"{pickup.pickupDate} at {pickup.pickupTime}\n"
+        f"{ref_line}"
+        f"Location: {location}\n"
+        f"Guide: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
+        f"Your pass: {placeholder_link}"
+    )
+    guide_message = (
+        f"Auction Ethiopia - Verify Pickup\n"
+        f"{pickup.winnerName} ({pickup.phone})\n"
+        f"Collecting {what}{qty_suffix}\n"
+        f"{pickup.pickupDate} at {pickup.pickupTime}\n"
+        f"Verify: {placeholder_link}"
+    )
+    return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)

@@ -39,8 +39,9 @@ from django.shortcuts import get_object_or_404
 import os
 from .push import send_push_to_user
 from .verification import (
-    create_verification, build_visitation_messages, send_and_log,
-    resolve_pass, verify_token, VerificationError,build_pickup_messages,
+    create_verification, build_visitation_messages, build_pickup_messages,
+    build_visitation_preview, build_pickup_preview, send_and_log,
+    resolve_pass, verify_token, VerificationError,
 )
 # =============================================================================
 # Shared helpers
@@ -805,10 +806,9 @@ class AppointmentSendConfirmationView(RoleRequiredAPIView):
 
 class AppointmentPreviewConfirmationView(RoleRequiredAPIView):
     """
-    GET /api/appointments/<id>/preview-confirmation/
-
-    Returns the SMS messages that would be sent without actually sending them.
-    Used by the frontend's preview-before-send modal.
+    GET /api/appointments/<id>/preview-confirmation/ — returns the exact
+    visitor/guide SMS text without sending anything or creating a
+    PartyVerification. Same role gate as actually sending.
     """
     required_roles = ('administrator', 'call_operator', 'auction_manager')
 
@@ -818,13 +818,7 @@ class AppointmentPreviewConfirmationView(RoleRequiredAPIView):
         except Appointment.DoesNotExist:
             return Response({'message': 'Appointment not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
-        # Create a temporary verification to generate the messages
-        verification = create_verification('visitation', appointment.publicId)
-        visitor_message, guide_message = build_visitation_messages(appointment, verification)
-
-        # Delete the temporary verification since we're only previewing
-        verification.delete()
-
+        visitor_message, guide_message = build_visitation_preview(appointment)
         return Response({
             'id': appointment.publicId,
             'visitorMessage': visitor_message,
@@ -834,42 +828,43 @@ class AppointmentPreviewConfirmationView(RoleRequiredAPIView):
 
 class AppointmentBulkSendConfirmationView(RoleRequiredAPIView):
     """
-    POST /api/appointments/send-confirmation-bulk/
-
-    Sends confirmations for multiple appointments at once.
-    Body: { ids: ["id1", "id2", ...] }
-    Returns: { results: [{ id, ok, visitor: {status, detail}, guide: {status, detail} | null }] }
+    POST /api/appointments/send-confirmation-bulk/ — { ids: [...] }.
+    Never partial-fails the whole batch on one bad id — each id gets
+    its own result entry.
     """
     required_roles = ('administrator', 'call_operator', 'auction_manager')
 
     def post(self, request):
         ids = request.data.get('ids', [])
-        if not ids:
-            return Response({'message': 'No IDs provided.'}, status=http_status.HTTP_400_BAD_REQUEST)
+        if not isinstance(ids, list) or not ids:
+            return Response({'message': 'ids must be a non-empty list.'}, status=http_status.HTTP_400_BAD_REQUEST)
 
         results = []
         for appointment_id in ids:
             try:
                 appointment = Appointment.objects.get(publicId=appointment_id)
-                verification = create_verification('visitation', appointment.publicId)
-                visitor_message, guide_message = build_visitation_messages(appointment, verification)
-
-                visitor_log = send_and_log('visitation', appointment.publicId, 'visitor', appointment.phone, visitor_message)
-
-                guide_log = None
-                if appointment.guidePhone:
-                    guide_log = send_and_log('visitation', appointment.publicId, 'guide', appointment.guidePhone, guide_message)
-
-                results.append({
-                    'id': appointment.publicId,
-                    'ok': True,
-                    'visitor': {'status': visitor_log.status, 'detail': visitor_log.providerResponse},
-                    'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
-                })
             except Appointment.DoesNotExist:
-                results.append({'id': appointment_id, 'ok': False})
-            except Exception:
-                results.append({'id': appointment_id, 'ok': False})
+                results.append({'id': appointment_id, 'message': 'Appointment not found.', 'ok': False})
+                continue
+
+            verification = create_verification('visitation', appointment.publicId)
+            visitor_message, guide_message = build_visitation_messages(appointment, verification)
+
+            visitor_log = send_and_log('visitation', appointment.publicId, 'visitor', appointment.phone, visitor_message)
+            guide_log = None
+            if appointment.guidePhone:
+                guide_log = send_and_log('visitation', appointment.publicId, 'guide', appointment.guidePhone, guide_message)
+
+            summary = f'{appointment.visitorName} · visitor {visitor_log.status}'
+            summary += f', guide {guide_log.status}' if guide_log else ', no guide phone on file — guide SMS skipped'
+            log_audit(request, 'Send visitation confirmation', '—', appointment.publicId, summary)
+
+            results.append({
+                'id': appointment.publicId,
+                'ok': visitor_log.status == 'sent',
+                'visitor': {'status': visitor_log.status, 'detail': visitor_log.providerResponse},
+                'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
+            })
 
         return Response({'results': results})
 
@@ -951,12 +946,7 @@ class PickupSendConfirmationView(RoleRequiredAPIView):
 
 
 class PickupPreviewConfirmationView(RoleRequiredAPIView):
-    """
-    GET /api/pickups/<id>/preview-confirmation/
-
-    Returns the SMS messages that would be sent without actually sending them.
-    Used by the frontend's preview-before-send modal.
-    """
+    """Mirrors AppointmentPreviewConfirmationView exactly."""
     required_roles = ('administrator', 'call_operator', 'auction_manager')
 
     def get(self, request, pickup_id):
@@ -965,58 +955,49 @@ class PickupPreviewConfirmationView(RoleRequiredAPIView):
         except Pickup.DoesNotExist:
             return Response({'message': 'Pickup not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
-        # Create a temporary verification to generate the messages
-        verification = create_verification('pickup', pickup.publicId)
-        winner_message, guide_message = build_pickup_messages(pickup, verification)
-
-        # Delete the temporary verification since we're only previewing
-        verification.delete()
-
+        visitor_message, guide_message = build_pickup_preview(pickup)
         return Response({
             'id': pickup.publicId,
-            'visitorMessage': winner_message,
+            'visitorMessage': visitor_message,
             'guideMessage': guide_message if pickup.guidePhone else None,
         })
 
 
 class PickupBulkSendConfirmationView(RoleRequiredAPIView):
-    """
-    POST /api/pickups/send-confirmation-bulk/
-
-    Sends confirmations for multiple pickups at once.
-    Body: { ids: ["id1", "id2", ...] }
-    Returns: { results: [{ id, ok, visitor: {status, detail}, guide: {status, detail} | null }] }
-    """
+    """Mirrors AppointmentBulkSendConfirmationView exactly."""
     required_roles = ('administrator', 'call_operator', 'auction_manager')
 
     def post(self, request):
         ids = request.data.get('ids', [])
-        if not ids:
-            return Response({'message': 'No IDs provided.'}, status=http_status.HTTP_400_BAD_REQUEST)
+        if not isinstance(ids, list) or not ids:
+            return Response({'message': 'ids must be a non-empty list.'}, status=http_status.HTTP_400_BAD_REQUEST)
 
         results = []
         for pickup_id in ids:
             try:
                 pickup = Pickup.objects.get(publicId=pickup_id)
-                verification = create_verification('pickup', pickup.publicId)
-                winner_message, guide_message = build_pickup_messages(pickup, verification)
-
-                winner_log = send_and_log('pickup', pickup.publicId, 'visitor', pickup.phone, winner_message)
-
-                guide_log = None
-                if pickup.guidePhone:
-                    guide_log = send_and_log('pickup', pickup.publicId, 'guide', pickup.guidePhone, guide_message)
-
-                results.append({
-                    'id': pickup.publicId,
-                    'ok': True,
-                    'visitor': {'status': winner_log.status, 'detail': winner_log.providerResponse},
-                    'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
-                })
             except Pickup.DoesNotExist:
-                results.append({'id': pickup_id, 'ok': False})
-            except Exception:
-                results.append({'id': pickup_id, 'ok': False})
+                results.append({'id': pickup_id, 'message': 'Pickup not found.', 'ok': False})
+                continue
+
+            verification = create_verification('pickup', pickup.publicId)
+            winner_message, guide_message = build_pickup_messages(pickup, verification)
+
+            winner_log = send_and_log('pickup', pickup.publicId, 'visitor', pickup.phone, winner_message)
+            guide_log = None
+            if pickup.guidePhone:
+                guide_log = send_and_log('pickup', pickup.publicId, 'guide', pickup.guidePhone, guide_message)
+
+            summary = f'{pickup.winnerName} · winner {winner_log.status}'
+            summary += f', guide {guide_log.status}' if guide_log else ', no guide phone on file — guide SMS skipped'
+            log_audit(request, 'Send pickup confirmation', '—', pickup.publicId, summary)
+
+            results.append({
+                'id': pickup.publicId,
+                'ok': winner_log.status == 'sent',
+                'visitor': {'status': winner_log.status, 'detail': winner_log.providerResponse},
+                'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
+            })
 
         return Response({'results': results})
 
