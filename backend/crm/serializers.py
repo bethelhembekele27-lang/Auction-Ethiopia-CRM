@@ -20,25 +20,35 @@ import re
 ET_PHONE_RE = re.compile(r'^(?:\+251|0)(9|7)\d{8}$')
 
 
-def _verification_status(subject_type, subject_id):
+def _verification_status(subject_type, subject_id, visitor_label='Visitor'):
     """
-    Looks up the most recent PartyVerification for this subject and
-    collapses it into one of five states for display. No verification
-    record at all means confirmation was never sent (not "not sent" as
-    in "failed" — just never triggered).
+    Looks up the PartyVerification for this subject and collapses it into
+    one of five states for display. visitor_label lets callers use the
+    right party name — "Visitor" for visitations, "Winner" for pickups —
+    since the underlying PartyVerification model always calls this side
+    "visitor" internally regardless of context. No verification record at
+    all means confirmation was never sent (not "not sent" as in "failed"
+    — just never triggered).
+
+    Direction note: XVerifiedAt means "X was verified" — guideVerifiedAt
+    is set when the visitor/winner scans the guide's pass, and
+    visitorVerifiedAt when the guide scans the visitor/winner's pass
+    (see verify_token in verification.py). So "Guide verified" = the
+    guide's identity was confirmed, and "{visitor_label} verified" = the
+    visitor/winner's identity was confirmed by the guide.
     """
     from .models import PartyVerification
     v = PartyVerification.objects.filter(subjectType=subject_type, subjectId=subject_id).first()
     if v is None:
         return 'Not sent'
-    guide_ok = bool(v.guideVerifiedAt)
-    visitor_ok = bool(v.visitorVerifiedAt)
+    guide_ok = bool(v.guideVerifiedAt)      # the visitor/winner confirmed the guide
+    visitor_ok = bool(v.visitorVerifiedAt)  # the guide confirmed the visitor/winner
     if guide_ok and visitor_ok:
         return 'Fully verified'
-    if guide_ok:
-        return 'Guide verified'
     if visitor_ok:
-        return 'Visitor verified'
+        return f'{visitor_label} verified'  # the guide confirmed the visitor/winner
+    if guide_ok:
+        return 'Guide verified'  # the visitor/winner confirmed the guide
     return 'Sent, not verified'
 
 
@@ -1022,7 +1032,7 @@ class PickupSerializer(serializers.ModelSerializer):
         ]
 
     def get_verificationStatus(self, obj):
-        return _verification_status('pickup', obj.publicId)
+        return _verification_status('pickup', obj.publicId, visitor_label='Winner')
 
     def validate_phone(self, value):
         return validate_ethiopian_phone(value)

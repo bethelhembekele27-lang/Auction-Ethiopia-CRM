@@ -90,6 +90,15 @@ def create_verification(subject_type: str, subject_id: str, expires_at=None) -> 
     )
 
 
+# NOTE ON AMHARIC SMS COST: Amharic script is outside the GSM-7 alphabet,
+# so every one of these messages goes out as UCS-2 — 70 characters per
+# segment instead of 160 — i.e. roughly 3-4 segments per message where the
+# old English templates used 1-2. Expected, not a bug; just the real
+# per-send cost once billing is live on the SMS gateway. to_gsm7_safe()
+# still runs on all of them: it does nothing for the Amharic text itself,
+# but keeps user-typed fields (address, names, notes) from injecting
+# stray Unicode punctuation alongside it.
+
 def build_visitation_messages(appointment, verification: PartyVerification) -> tuple[str, str]:
     visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
     guide_link = f"{FRONTEND_BASE_URL}/g/{verification.guideToken}"
@@ -97,26 +106,26 @@ def build_visitation_messages(appointment, verification: PartyVerification) -> t
     location_bits = [appointment.address] if appointment.address else []
     if appointment.mapsLink:
         location_bits.append(appointment.mapsLink)
-    location = " - ".join(location_bits) or "Location to be confirmed"
+    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋገጠም"
 
-    what = appointment.batch or appointment.auction or "your item"
-    qty_suffix = f" (qty: {appointment.quantity})" if appointment.quantity else ""
+    what = appointment.batch or appointment.auction or "እቃው"
+    qty_suffix = f" (ብዛት: {appointment.quantity})" if appointment.quantity else ""
 
     visitor_message = (
-        f"Auction Ethiopia - Visit Confirmed\n"
+        f"ኦክሽን ኢትዮጵያ - ጉብኝት ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{appointment.visitDate} at {appointment.visitTime}\n"
-        f"Location: {location}\n"
-        f"Guide: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
-        f"Your pass: {visitor_link}"
+        f"{appointment.visitDate} በ{appointment.visitTime}\n"
+        f"አካባቢ: {location}\n"
+        f"አስጎብኚ: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
+        f"የእርስዎ ማለፊያ: {visitor_link}"
     )
 
     guide_message = (
-        f"Auction Ethiopia - Verify Visitor\n"
+        f"ኦክሽን ኢትዮጵያ - ጎብኚ ያረጋግጡ\n"
         f"{appointment.visitorName} ({appointment.phone})\n"
-        f"Viewing {what}{qty_suffix}\n"
-        f"{appointment.visitDate} at {appointment.visitTime}\n"
-        f"Verify: {guide_link}"
+        f"የሚመለከቱት {what}{qty_suffix}\n"
+        f"{appointment.visitDate} በ{appointment.visitTime}\n"
+        f"ያረጋግጡ: {guide_link}"
     )
 
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
@@ -306,27 +315,27 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
     location_bits = [pickup.address] if pickup.address else []
     if pickup.mapsLink:
         location_bits.append(pickup.mapsLink)
-    location = " - ".join(location_bits) or "Location to be confirmed"
+    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋገጠም"
 
-    what = pickup.itemDescription or pickup.auction or "your item(s)"
-    qty_suffix = f" (qty: {pickup.quantity})" if pickup.quantity else ""
-    ref_line = f"Ref: {pickup.paymentReference}\n" if pickup.paymentReference else ""
+    what = pickup.itemDescription or pickup.auction or "እቃዎቹ"
+    qty_suffix = f" (ብዛት: {pickup.quantity})" if pickup.quantity else ""
+    ref_line = f"ማጣቀሻ: {pickup.paymentReference}\n" if pickup.paymentReference else ""
 
     visitor_message = (
-        f"Auction Ethiopia - Pickup Confirmed\n"
+        f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{pickup.pickupDate} at {pickup.pickupTime}\n"
+        f"{pickup.pickupDate} በ{pickup.pickupTime}\n"
         f"{ref_line}"
-        f"Location: {location}\n"
-        f"Guide: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
-        f"Your pass: {visitor_link}"
+        f"አካባቢ: {location}\n"
+        f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
+        f"የእርስዎ ማለፊያ: {visitor_link}"
     )
     guide_message = (
-        f"Auction Ethiopia - Verify Pickup\n"
+        f"ኦክሽን ኢትዮጵያ - መውሰጃ ያረጋግጡ\n"
         f"{pickup.winnerName} ({pickup.phone})\n"
-        f"Collecting {what}{qty_suffix}\n"
-        f"{pickup.pickupDate} at {pickup.pickupTime}\n"
-        f"Verify: {guide_link}"
+        f"የሚሰበስቡት {what}{qty_suffix}\n"
+        f"{pickup.pickupDate} በ{pickup.pickupTime}\n"
+        f"ያረጋግጡ: {guide_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
 
@@ -341,26 +350,26 @@ def build_visitation_preview(appointment) -> tuple[str, str]:
     location_bits = [appointment.address] if appointment.address else []
     if appointment.mapsLink:
         location_bits.append(appointment.mapsLink)
-    location = " - ".join(location_bits) or "Location to be confirmed"
+    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋገጠም"
 
-    what = appointment.batch or appointment.auction or "your item"
-    qty_suffix = f" (qty: {appointment.quantity})" if appointment.quantity else ""
-    placeholder_link = "[pass link generated when sent]"
+    what = appointment.batch or appointment.auction or "እቃው"
+    qty_suffix = f" (ብዛት: {appointment.quantity})" if appointment.quantity else ""
+    placeholder_link = "[ማለፊያ ሲላክ ይፈጠራል]"
 
     visitor_message = (
-        f"Auction Ethiopia - Visit Confirmed\n"
+        f"ኦክሽን ኢትዮጵያ - ጉብኝት ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{appointment.visitDate} at {appointment.visitTime}\n"
-        f"Location: {location}\n"
-        f"Guide: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
-        f"Your pass: {placeholder_link}"
+        f"{appointment.visitDate} በ{appointment.visitTime}\n"
+        f"አካባቢ: {location}\n"
+        f"አስጎብኚ: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
+        f"የእርስዎ ማለፊያ: {placeholder_link}"
     )
     guide_message = (
-        f"Auction Ethiopia - Verify Visitor\n"
+        f"ኦክሽን ኢትዮጵያ - ጎብኚ ያረጋግጡ\n"
         f"{appointment.visitorName} ({appointment.phone})\n"
-        f"Viewing {what}{qty_suffix}\n"
-        f"{appointment.visitDate} at {appointment.visitTime}\n"
-        f"Verify: {placeholder_link}"
+        f"የሚመለከቱት {what}{qty_suffix}\n"
+        f"{appointment.visitDate} በ{appointment.visitTime}\n"
+        f"ያረጋግጡ: {placeholder_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
 
@@ -370,27 +379,27 @@ def build_pickup_preview(pickup) -> tuple[str, str]:
     location_bits = [pickup.address] if pickup.address else []
     if pickup.mapsLink:
         location_bits.append(pickup.mapsLink)
-    location = " - ".join(location_bits) or "Location to be confirmed"
+    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋገጠም"
 
-    what = pickup.itemDescription or pickup.auction or "your item(s)"
-    qty_suffix = f" (qty: {pickup.quantity})" if pickup.quantity else ""
-    ref_line = f"Ref: {pickup.paymentReference}\n" if pickup.paymentReference else ""
-    placeholder_link = "[pass link generated when sent]"
+    what = pickup.itemDescription or pickup.auction or "እቃዎቹ"
+    qty_suffix = f" (ብዛት: {pickup.quantity})" if pickup.quantity else ""
+    ref_line = f"ማጣቀሻ: {pickup.paymentReference}\n" if pickup.paymentReference else ""
+    placeholder_link = "[ማለፊያ ሲላክ ይፈጠራል]"
 
     visitor_message = (
-        f"Auction Ethiopia - Pickup Confirmed\n"
+        f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{pickup.pickupDate} at {pickup.pickupTime}\n"
+        f"{pickup.pickupDate} በ{pickup.pickupTime}\n"
         f"{ref_line}"
-        f"Location: {location}\n"
-        f"Guide: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
-        f"Your pass: {placeholder_link}"
+        f"አካባቢ: {location}\n"
+        f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
+        f"የእርስዎ ማለፊያ: {placeholder_link}"
     )
     guide_message = (
-        f"Auction Ethiopia - Verify Pickup\n"
+        f"ኦክሽን ኢትዮጵያ - መውሰጃ ያረጋግጡ\n"
         f"{pickup.winnerName} ({pickup.phone})\n"
-        f"Collecting {what}{qty_suffix}\n"
-        f"{pickup.pickupDate} at {pickup.pickupTime}\n"
-        f"Verify: {placeholder_link}"
+        f"የሚሰበስቡት {what}{qty_suffix}\n"
+        f"{pickup.pickupDate} በ{pickup.pickupTime}\n"
+        f"ያረጋግጡ: {placeholder_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)

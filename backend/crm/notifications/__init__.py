@@ -37,7 +37,6 @@ def _infobip_factory():
 
 _BACKENDS["infobip"] = _infobip_factory
 
-
 def get_sms_sender() -> SMSSender:
     backend_name = config("SMS_BACKEND", default="console")
     factory = _BACKENDS.get(backend_name)

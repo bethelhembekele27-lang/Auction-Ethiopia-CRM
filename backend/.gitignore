@@ -48,3 +48,7 @@ local_settings.py
 node_modules/
 package-lock.json
 staticfiles/
+
+private_key.pem
+public_key.pem
+generate_vapid.py

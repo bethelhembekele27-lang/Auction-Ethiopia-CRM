@@ -33,6 +33,7 @@ export const VERIFICATION_STAMP = {
   "Sent, not verified": "amber",
   "Guide verified": "blue",
   "Visitor verified": "blue",
+  "Winner verified": "blue",
   "Fully verified": "green",
 };
 

@@ -10,9 +10,7 @@
   },
   "dependencies": {
     "html2canvas": "^1.4.1",
-    "html5-qrcode": "^2.3.8",
-    "jspdf": "^4.2.1",
-    "qrcode": "^1.5.4",
+    "jspdf": "^4.2.1",  
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
