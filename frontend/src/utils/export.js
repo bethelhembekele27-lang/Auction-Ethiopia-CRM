@@ -37,10 +37,17 @@ export function exportRowsCSV(filenameBase, rows) {
 // This sidesteps jsPDF/autoTable's styling quirks entirely — what you see
 // in this HTML is exactly what ends up in the PDF, pixel for pixel.
 function buildReportHTML(title, rows) {
+  // Cell values and the report title come from user-entered CRM data and
+  // are interpolated into an HTML string below, so anything containing
+  // markup would otherwise be parsed as real HTML when this lands in the
+  // DOM (and then rasterized into the PDF). Escape all five characters
+  // that can break out of text content or an attribute.
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
   const headers = Object.keys(rows[0]);
-  const headRow = headers.map((h) => `<th>${h}</th>`).join("");
+  const headRow = headers.map((h) => `<th>${esc(h)}</th>`).join("");
   const bodyRows = rows.map((r) =>
-    `<tr>${headers.map((h) => `<td>${r[h] ?? ""}</td>`).join("")}</tr>`
+    `<tr>${headers.map((h) => `<td>${esc(r[h])}</td>`).join("")}</tr>`
   ).join("");
 
   const container = document.createElement("div");
@@ -61,7 +68,7 @@ function buildReportHTML(title, rows) {
         Auction Ethiopia — CRM / Call Center
       </div>
       <div style="height:3px;background:#AD7F27;width:100%;margin-bottom:16px;"></div>
-      <h1 style="font-size:22px;margin:0 0 4px;color:#14171C;font-weight:700;">${title}</h1>
+      <h1 style="font-size:22px;margin:0 0 4px;color:#14171C;font-weight:700;">${esc(title)}</h1>
       <div style="font-size:12.5px;color:#AD7F27;margin-bottom:16px;">
         Generated ${new Date().toLocaleString()} · ${rows.length} record(s)
       </div>

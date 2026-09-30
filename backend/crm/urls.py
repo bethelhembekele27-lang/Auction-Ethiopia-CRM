@@ -5,9 +5,21 @@ from .views import (
     AppointmentSendConfirmationView,AppointmentPreviewConfirmationView,AppointmentBulkSendConfirmationView,ComplaintListCreateView,ComplaintDetailView,EscalationListCreateView,EscalationResolveView,AuditLogListView,AuditLogClearView,GoogleLoginView,
     RoleDeleteView,ChangePasswordView,UpdateUsernameView,PushSubscribeView,PushUnsubscribeView, VapidPublicKeyView,TriggerFollowupRemindersView,PassResolveView,PassVerifyView,
     PickupListCreateView, PickupDetailView, PickupSendConfirmationView, PickupPreviewConfirmationView, PickupBulkSendConfirmationView,
+    HealthView, SavedLocationView,
+    PfmPreviewView, PfmImportView, PfmWinnerListView, PfmWinnerSkipView, PfmSchedulePickupView,
 )
 
 urlpatterns = [
+    path('health/', HealthView.as_view(), name='health'),
+
+    # PFM winner import — winners stage in PfmWinner, then get scheduled
+    # into a Pickup by an operator.
+    path('pfm/preview/', PfmPreviewView.as_view(), name='pfm-preview'),
+    path('pfm/import/', PfmImportView.as_view(), name='pfm-import'),
+    path('pfm/winners/', PfmWinnerListView.as_view(), name='pfm-winners'),
+    path('pfm/winners/<int:winner_id>/skip/', PfmWinnerSkipView.as_view(), name='pfm-winner-skip'),
+    path('pfm/winners/<int:winner_id>/schedule-pickup/', PfmSchedulePickupView.as_view(), name='pfm-winner-schedule'),
+
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/google/', GoogleLoginView.as_view(), name='auth-google'),
@@ -29,6 +41,7 @@ urlpatterns = [
 
     path('visit-setups', VisitSetupListCreateView.as_view(), name='visit-setup-list-create'),
     path('visit-setups/<str:visit_setup_id>', VisitSetupDetailView.as_view(), name='visit-setup-detail'),
+    path('locations', SavedLocationView.as_view(), name='saved-locations'),
 
     path('appointments', AppointmentListCreateView.as_view(), name='appointment-list-create'),
     path('appointments/<str:appointment_id>', AppointmentDetailView.as_view(), name='appointment-detail'),

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { PRIORITIES, STATUSES, APPT_STATUSES } from "../constants/lookups";
-import { todayISO, fmtDate } from "../utils/format";
+import { PRIORITIES, STATUSES } from "../constants/lookups";
+import { todayISO, fmtDate, fmtWindow, localDate, displayName } from "../utils/format";
 import { exportRowsCSV, exportRowsPDF } from "../utils/export";
 import { Field, EmptyState, inputCls } from "../components/ui";
 import { DownloadIcon } from "../components/icons";
@@ -39,13 +39,15 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
 
   const usesAuctionFields = rType !== "complaints";
   const usesPriorityField = rType !== "visitations";
-  const statusChoices = rType === "visitations" ? APPT_STATUSES
+  // Visitations have no status anymore, so offering one there would only
+  // produce a filter that silently excludes every row.
+  const statusChoices = rType === "visitations" ? []
     : rType === "complaints" ? COMPLAINT_STATUSES
     : rType === "all"
       ? (rSubType === "inquiries" ? STATUSES
-        : rSubType === "visitations" ? APPT_STATUSES
+        : rSubType === "visitations" ? []
         : rSubType === "complaints" ? COMPLAINT_STATUSES
-        : Array.from(new Set([...STATUSES, ...APPT_STATUSES, ...COMPLAINT_STATUSES])))
+        : Array.from(new Set([...STATUSES, ...COMPLAINT_STATUSES])))
     : STATUSES;
 
   function toggleStatus(s) {
@@ -55,10 +57,12 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
   // Date filtering is now purely Date-from / Date-to (CHANGES.md item 7)
   // — if both are left blank, every matching record is included
   // regardless of date, rather than silently defaulting to "Today".
-  function passesCommonFilters(r, dateOnly) {
+  // skipStatus is for visitations, which have no status to filter on even
+  // though this is the "common" filter every row type runs.
+  function passesCommonFilters(r, dateOnly, skipStatus = false) {
     if (rFrom && dateOnly < rFrom) return false;
     if (rTo && dateOnly > rTo) return false;
-    if (rStatuses.length && !rStatuses.includes(r.status)) return false;
+    if (!skipStatus && rStatuses.length && !rStatuses.includes(r.status)) return false;
     if (rPriority !== "Any priority" && r.priority !== rPriority) return false;
     return true;
   }
@@ -78,15 +82,17 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
         inquiries.forEach((r) => {
           const dateOnly = (r.dateTime || "").slice(0, 10);
           if (passesCommonFilters(r, dateOnly) && passesAuctionFilters(r)) {
-            rows.push({ Type: "Inquiry", ID: r.id, Name: r.callerName, Phone: r.phone, Company: r.company || "Auction Ethiopia (general)", Auction: r.auction, Category: r.category, Priority: r.priority, Date: fmtDate(dateOnly), Status: r.status });
+            rows.push({ Type: "Inquiry", ID: r.id, Name: displayName(r.callerName), Phone: r.phone, Company: r.company || "Auction Ethiopia (general)", Auction: r.auction, Category: r.category, Priority: r.priority, Date: fmtDate(dateOnly), Status: r.status });
           }
         });
       }
       if (rSubType === "all" || rSubType === "visitations") {
         appointments.forEach((r) => {
-          const dateOnly = r.visitDate || "";
-          if (passesCommonFilters(r, dateOnly) && passesAuctionFilters(r)) {
-            rows.push({ Type: "Visitation", ID: r.id, Name: r.visitorName, Phone: r.phone, Company: r.company || "Auction Ethiopia (general)", Auction: r.auction, Category: "—", Priority: "—", Date: fmtDate(dateOnly), Status: r.status });
+          // visitDate is null for setup-backed and custom visits, so date
+          // filtering uses registration date instead.
+          const dateOnly = localDate(r.createdAt);
+          if (passesCommonFilters(r, dateOnly, true) && passesAuctionFilters(r)) {
+            rows.push({ Type: "Visitation", ID: r.id, Name: r.visitorName || r.phone, Phone: r.phone, Company: r.company || "Auction Ethiopia (general)", Auction: r.auction, Category: "—", Priority: "—", Date: fmtDate(dateOnly), Status: "—" });
           }
         });
       }
@@ -94,7 +100,7 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
         complaints.forEach((r) => {
           const dateOnly = r.date || "";
           if (passesCommonFilters(r, dateOnly)) {
-            rows.push({ Type: "Complaint", ID: r.id, Name: r.callerName, Phone: r.phone, Company: "—", Auction: "—", Category: r.category, Priority: r.priority, Date: fmtDate(dateOnly), Status: r.status });
+            rows.push({ Type: "Complaint", ID: r.id, Name: displayName(r.callerName), Phone: r.phone, Company: "—", Auction: "—", Category: r.category, Priority: r.priority, Date: fmtDate(dateOnly), Status: r.status });
           }
         });
       }
@@ -102,20 +108,20 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
     }
     const source = rType === "visitations" ? appointments : rType === "complaints" ? complaints : inquiries;
     const rows = source.filter((r) => {
-      const rawDate = rType === "visitations" ? r.visitDate : rType === "complaints" ? r.date : (r.dateTime || "").slice(0, 10);
+      const rawDate = rType === "visitations" ? localDate(r.createdAt) : rType === "complaints" ? r.date : (r.dateTime || "").slice(0, 10);
       const dateOnly = (rawDate || "").slice(0, 10);
-      if (!passesCommonFilters(r, dateOnly)) return false;
+      if (!passesCommonFilters(r, dateOnly, rType === "visitations")) return false;
       if (usesAuctionFields && !passesAuctionFilters(r)) return false;
       return true;
     });
     return rows.map((r) => {
       if (rType === "visitations") {
-        return { "Appointment ID": r.id, Visitor: r.visitorName, Phone: r.phone, Company: r.company || "Auction Ethiopia (general)", Auction: r.auction, Batch: r.batch || "—", "Visit date": fmtDate(r.visitDate), Time: r.visitTime, Staff: r.assignedStaff, Status: r.status };
+        return { "Appointment ID": r.id, Visitor: r.visitorName || r.phone, Phone: r.phone, Company: r.company || "Auction Ethiopia (general)", Auction: r.auction, Batch: r.batch || "—", Registered: fmtDate(localDate(r.createdAt)), "Visit window": r.isCustom ? "Custom (ID only)" : fmtWindow(r.visitWindow), Guide: r.guideName || "—" };
       }
       if (rType === "complaints") {
-        return { "Complaint ID": r.id, Caller: r.callerName, Phone: r.phone, Category: r.category, Department: r.department, Priority: r.priority, Date: fmtDate(r.date), Status: r.status };
+        return { "Complaint ID": r.id, Caller: displayName(r.callerName), Phone: r.phone, Category: r.category, Department: r.department, Priority: r.priority, Date: fmtDate(r.date), Status: r.status };
       }
-      return { "Inquiry ID": r.id, Caller: r.callerName, Phone: r.phone, Company: r.company || "Auction Ethiopia (general)", Auction: r.auction, Batch: r.batch || "—", Category: r.category, Priority: r.priority, Operator: r.operator, Date: fmtDate((r.dateTime || "").slice(0, 10)), Status: r.status };
+      return { "Inquiry ID": r.id, Caller: displayName(r.callerName), Phone: r.phone, Company: r.company || "Auction Ethiopia (general)", Auction: r.auction, Batch: r.batch || "—", Category: r.category, Priority: r.priority, Operator: r.operator, Date: fmtDate((r.dateTime || "").slice(0, 10)), Status: r.status };
     });
   }
 
@@ -176,16 +182,18 @@ export function CustomReportBuilder({ inquiries, appointments, complaints }) {
           </select>
         </div>
       )}
-      <div className="col-span-2" style={{ marginBottom: 14 }}>
-        <div className="text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-3)]" style={{ marginBottom: 6 }}>Status (optional — pick as many as you like)</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px" }}>
-          {statusChoices.map((s) => (
-            <label key={s} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-              <input type="checkbox" checked={rStatuses.includes(s)} onChange={() => toggleStatus(s)} /> {s}
-            </label>
-          ))}
+      {statusChoices.length > 0 && (
+        <div className="col-span-2" style={{ marginBottom: 14 }}>
+          <div className="text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-3)]" style={{ marginBottom: 6 }}>Status (optional — pick as many as you like)</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px" }}>
+            {statusChoices.map((s) => (
+              <label key={s} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                <input type="checkbox" checked={rStatuses.includes(s)} onChange={() => toggleStatus(s)} /> {s}
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--ink)] text-white border-[color:var(--ink)] btn-icon-label" onClick={preview}>Preview report</button>
         <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] btn-icon-label" disabled={!previewRows || !previewRows.length} onClick={() => exportRowsCSV(rType + "-report-" + todayISO(), previewRows)}>

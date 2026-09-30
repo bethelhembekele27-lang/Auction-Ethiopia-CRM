@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { FOLLOWUP_STATUSES, FOLLOWUP_STAMP } from "../constants/lookups";
-import { fmtDate } from "../utils/format";
+import { fmtDate, displayName } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
@@ -110,7 +110,7 @@ export default function Followups({
               "Delete follow-up",
               `${f.status} · ${f.date || "No date"}`,
               "Deleted",
-              `${f.id} · ${f.callerName}`
+              `${f.id} · ${displayName(f.callerName)}`
             )
           );
 
@@ -209,8 +209,8 @@ export default function Followups({
           "Update follow-up",
           f.status,
           status,
-          `${f.id} · ${f.callerName}`
-        )
+        `${f.id} · ${displayName(f.callerName)}`
+      )
       );
 
       sel.clear();
@@ -397,7 +397,7 @@ export default function Followups({
                     </td>
 
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {f.callerName}
+                      {f.callerName || "Unknown caller"}
                       <div
                         style={{
                           fontSize: 11.5,

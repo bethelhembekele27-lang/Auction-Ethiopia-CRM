@@ -10,3 +10,5 @@ export * as audit from "./audit";
 export * as employees from "./employees";
 export * as dashboard from "./dashboard";
 export * as pickups from "./pickups";
+export * as locations from "./locations";
+export * as pfm from "./pfm";

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITIES, PRIORITY_STAMP } from "../constants/lookups";
-import { todayISO } from "../utils/format";
+import { todayISO, displayName } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
@@ -49,7 +49,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
         rows.forEach((c) =>
           addAudit(
             "Delete complaint",
-            `${c.id} · ${c.callerName}`,
+            `${c.id} · ${displayName(c.callerName)}`,
             "—",
             "Permanently removed"
           )
@@ -93,7 +93,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
   }
 
   async function save() {
-    if (!draft.callerName || !draft.description) return;
+    if (!draft.description) return;
     if (!isValidEthiopianPhone(draft.phone)) {
       setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
       return;
@@ -179,7 +179,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
           "Update complaint status",
           c.status,
           "Resolved",
-          `${c.id} · ${c.callerName}`
+          `${c.id} · ${displayName(c.callerName)}`
         )
       );
 
@@ -293,7 +293,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
                     </td>
 
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {c.callerName}
+                      {c.callerName || "Unknown caller"}
                       <div
                         style={{
                           fontSize: 11.5,
@@ -350,7 +350,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
             />
           </Field>
 
-          <Field label="Caller name">
+          <Field label="Caller name (optional)">
             <input
               className={inputCls}
               value={draft.callerName}

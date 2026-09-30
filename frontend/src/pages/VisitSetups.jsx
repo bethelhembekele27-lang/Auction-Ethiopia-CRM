@@ -8,16 +8,16 @@ import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { EditIcon, DeleteIcon, PlusIcon } from "../components/icons";
 import AutoCompleteField from "../components/AutoCompleteField";
+import LocationFields, { useSavedLocations } from "../components/LocationFields";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
 import { getRecentUniqueOptions } from "../utils/recentOptions";
 const emptyVisitSetup = {
-  id: "", company: "", batch: "", dateFrom: "", dateTo: "", address: "", items: "",
+  id: "", company: "", batch: "", dateFrom: "", dateTo: "", address: "", mapsLink: "", items: "",
   guideName: "", guidePhone: "", guideTimeFrom: "", guideTimeTo: "",
 };
 
-// Exported so Visitations.jsx (and any other page) can reuse the exact
-// same open/closed and display logic instead of keeping a second copy
-// that could drift out of sync — see CHANGES.md item 1.
+// Renders the setup's date range in the table, tolerating the hand-typed
+// free-text form ("mid August 2026") that dateFrom/dateTo still allow.
 export function formatSetupDateRange(v) {
   const fromDisplay = v.dateFrom ? (isIsoDate(v.dateFrom) ? fmtDate(v.dateFrom) : v.dateFrom) : "";
   const toDisplay = v.dateTo ? (isIsoDate(v.dateTo) ? fmtDate(v.dateTo) : v.dateTo) : "";
@@ -30,25 +30,6 @@ export function isSetupOpen(v) {
   const checkDate = v.dateTo || v.dateFrom;
   if (!checkDate || !isIsoDate(checkDate)) return true;
   return checkDate >= todayISO();
-}
-
-export function autoFollowupForVisit(visit, genId, operatorName) {
-  const base = new Date((visit.visitDate || todayISO()) + "T00:00:00");
-  const next = isNaN(base) ? new Date() : new Date(base.getTime() + 86400000);
-  return {
-    id: genId("FU", "fu"),
-    inquiryId: visit.id,
-    callerName: visit.visitorName,
-    date: next.toISOString().slice(0, 10),
-    reminder: true,
-    assignedOperator: operatorName || "",
-    status: "Pending",
-    notes: `Follow up after the visit — ask ${visit.visitorName} what they thought of the items (${visit.batch || visit.auction || "—"}).`,
-    createdDate: todayISO(),
-    company: visit.company || "",
-    batch: visit.batch || "",
-    guideName: visit.guideName || visit.assignedStaff || "",
-  };
 }
 
 function DateRangeField({ label, value, mode, setMode, onChange }) {
@@ -77,6 +58,7 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
 
   const sel = useRowSelection((v) => v.id);
   const { pending, confirm, cancel, run } = useConfirm();
+  const loc = useSavedLocations();
   async function bulkDelete() {
     const rows = sel.selectedFrom(filtered);
     if (!rows.length) return;
@@ -122,6 +104,7 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
     setDraft(emptyVisitSetup);
     setDateFromMode("calendar");
     setDateToMode("calendar");
+    loc.setChoice("once");
     setSaveError("");
     setModalOpen(true);
   }
@@ -130,6 +113,7 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
     setDraft({ ...v });
     setDateFromMode(isIsoDate(v.dateFrom) || !v.dateFrom ? "calendar" : "manual");
     setDateToMode(isIsoDate(v.dateTo) || !v.dateTo ? "calendar" : "manual");
+    loc.setChoice("once");
     setSaveError("");
     setModalOpen(true);
   }
@@ -155,6 +139,9 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
         setVisitSetups((prev) => [created, ...prev]);
         addAudit("Create visit setup", "—", `${created.id} created`, `${created.company} · ${created.batch} — guide ${created.guideName}`);
       }
+      // After the write succeeded, so a rejected visit setup never also
+      // writes a saved location.
+      await loc.persist(draft.address, draft.mapsLink, loc.choice);
       setModalOpen(false);
       sel.clear();
     } catch (err) {
@@ -199,7 +186,11 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.company}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.batch}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{formatSetupDateRange(v)}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.address}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                      {v.mapsLink
+                        ? <a href={v.mapsLink} target="_blank" rel="noreferrer" className="text-[color:var(--blue)] underline underline-offset-2">{v.address || "Open map"}</a>
+                        : v.address}
+                    </td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.items}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.guideName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{v.guidePhone}</div></td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.guideTimeFrom} – {v.guideTimeTo}</td>
@@ -217,7 +208,8 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
             <AutoCompleteField value={draft.company} onChange={(v) => setDraft({ ...draft, company: v })} options={companyOptions} placeholder="Choose a past company or type a new one" />
           </Field>
           <Field label="Batch number"><input className={inputCls} value={draft.batch} onChange={(e) => setDraft({ ...draft, batch: e.target.value })} /></Field>
-          <Field label="Address"><input className={inputCls} value={draft.address} onChange={(e) => setDraft({ ...draft, address: e.target.value })} /></Field>
+          <LocationFields loc={loc} address={draft.address} mapsLink={draft.mapsLink}
+            onChange={(p) => setDraft((d) => ({ ...d, ...p }))} />
           <Field label="Item(s) out for auction" full><textarea className={inputCls} rows={2} value={draft.items} onChange={(e) => setDraft({ ...draft, items: e.target.value })} /></Field>
           <Field label="Guide name">
             <AutoCompleteField value={draft.guideName} onChange={(v) => setDraft({ ...draft, guideName: v })} options={guideNameOptions} placeholder="Choose a past guide or type a new one" />

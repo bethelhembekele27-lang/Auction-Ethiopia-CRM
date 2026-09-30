@@ -20,6 +20,7 @@ from django.utils import timezone
 
 from .models import PartyVerification, NotificationLog,Pickup
 from .notifications import get_sms_sender
+from .visit_rules import appointment_window, window_text
 
 
 # How long a visitor/guide pass stays valid after an appointment's
@@ -110,11 +111,12 @@ def build_visitation_messages(appointment, verification: PartyVerification) -> t
 
     what = appointment.batch or appointment.auction or "እቃው"
     qty_suffix = f" (ብዛት: {appointment.quantity})" if appointment.quantity else ""
+    window = window_text(appointment_window(appointment), 'በየቀኑ')
 
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - ጉብኝት ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{appointment.visitDate} በ{appointment.visitTime}\n"
+        f"ጊዜ: {window}\n"
         f"አካባቢ: {location}\n"
         f"አስጎብኚ: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
         f"የእርስዎ ማለፊያ: {visitor_link}"
@@ -122,13 +124,22 @@ def build_visitation_messages(appointment, verification: PartyVerification) -> t
 
     guide_message = (
         f"ኦክሽን ኢትዮጵያ - ጎብኚ ያረጋግጡ\n"
-        f"{appointment.visitorName} ({appointment.phone})\n"
+        f"{appointment.visitorName or appointment.phone} ({appointment.phone})\n"
         f"የሚመለከቱት {what}{qty_suffix}\n"
-        f"{appointment.visitDate} በ{appointment.visitTime}\n"
+        f"ጊዜ: {window}\n"
         f"ያረጋግጡ: {guide_link}"
     )
 
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
+
+
+def build_custom_visit_message(appointment) -> str:
+    """
+    The entire SMS for an ID-only (isCustom) visit. There's no setup, no
+    guide and no QR pass to send, so this is the only message such a visit
+    produces — address plus maps link is everything the visitor needs.
+    """
+    return to_gsm7_safe(f"ኦክሽን ኢትዮጵያ - የጉብኝት አድራሻ\n{appointment.address}\n{appointment.mapsLink}")
 
 
 def send_and_log(subject_type: str, subject_id: str, recipient_role: str, phone: str, message: str) -> NotificationLog:
@@ -202,11 +213,17 @@ def resolve_pass(token: str) -> dict:
             appt = Appointment.objects.get(publicId=v.subjectId)
         except Appointment.DoesNotExist:
             raise VerificationError("The related visit record no longer exists.")
+        w = appointment_window(appt)
         subject_data = {
             'visitorName': appt.visitorName, 'phone': appt.phone,
             'company': appt.company, 'auction': appt.auction, 'batch': appt.batch,
             'items': appt.items, 'quantity': appt.quantity,
-            'visitDate': appt.visitDate.isoformat(), 'visitTime': appt.visitTime.strftime('%H:%M'),
+            # Window, not a single date: a setup-backed visit spans the
+            # setup's whole range. visitDate/visitTime are nullable now, so
+            # .isoformat()/.strftime() on them would crash on a setup-backed
+            # or custom visit — appointment_window() handles both cases.
+            'visitDate': w['dateFrom'], 'visitDateTo': w['dateTo'],
+            'visitTime': w['timeFrom'], 'visitTimeTo': w['timeTo'],
             'address': appt.address, 'mapsLink': appt.mapsLink,
             'guideName': appt.guideName, 'guidePhone': appt.guidePhone,
         }
@@ -219,7 +236,13 @@ def resolve_pass(token: str) -> dict:
             'visitorName': pu.winnerName, 'phone': pu.phone,
             'company': '', 'auction': pu.auction, 'batch': '',
             'items': pu.itemDescription, 'quantity': pu.quantity,
-            'visitDate': pu.pickupDate.isoformat(), 'visitTime': pu.pickupTime.strftime('%H:%M'),
+            # Single date, no range — but the keys are present and empty so
+            # both branches of resolve_pass return the same shape and the
+            # pass page doesn't need to branch on subjectType.
+            'visitDate': pu.pickupDate.isoformat() if pu.pickupDate else '',
+            'visitDateTo': '',
+            'visitTime': pu.pickupTime.strftime('%H:%M') if pu.pickupTime else '',
+            'visitTimeTo': '',
             'address': pu.address, 'mapsLink': pu.mapsLink,
             'guideName': pu.guideName, 'guidePhone': pu.guidePhone,
         }
@@ -354,21 +377,22 @@ def build_visitation_preview(appointment) -> tuple[str, str]:
 
     what = appointment.batch or appointment.auction or "እቃው"
     qty_suffix = f" (ብዛት: {appointment.quantity})" if appointment.quantity else ""
+    window = window_text(appointment_window(appointment), 'በየቀኑ')
     placeholder_link = "[ማለፊያ ሲላክ ይፈጠራል]"
 
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - ጉብኝት ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{appointment.visitDate} በ{appointment.visitTime}\n"
+        f"ጊዜ: {window}\n"
         f"አካባቢ: {location}\n"
         f"አስጎብኚ: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
         f"የእርስዎ ማለፊያ: {placeholder_link}"
     )
     guide_message = (
         f"ኦክሽን ኢትዮጵያ - ጎብኚ ያረጋግጡ\n"
-        f"{appointment.visitorName} ({appointment.phone})\n"
+        f"{appointment.visitorName or appointment.phone} ({appointment.phone})\n"
         f"የሚመለከቱት {what}{qty_suffix}\n"
-        f"{appointment.visitDate} በ{appointment.visitTime}\n"
+        f"ጊዜ: {window}\n"
         f"ያረጋግጡ: {placeholder_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)

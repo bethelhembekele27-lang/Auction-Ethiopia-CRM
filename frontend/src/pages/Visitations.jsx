@@ -1,59 +1,60 @@
 import { useState, useMemo } from "react";
-import { APPT_STATUSES, APPT_STAMP, VERIFICATION_STAMP } from "../constants/lookups";
-import { todayISO, fmtDate, isIsoDate, dateInPreset } from "../utils/format";
+import { VERIFICATION_STAMP } from "../constants/lookups";
+import { fmtWindow } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { isSetupOpen } from "./VisitSetups";
 import { appointments as appointmentsApi, followups as followupsApi } from "../api";
-import { EditIcon, DeleteIcon, PlusIcon, CheckIcon, SendIcon } from "../components/icons";
+import { EditIcon, DeleteIcon, PlusIcon, SendIcon } from "../components/icons";
 import { useConfirm } from "../hooks/useConfirm";
 import AutoCompleteField from "../components/AutoCompleteField";
+import LocationFields, { useSavedLocations } from "../components/LocationFields";
 import ConfirmDialog from "../components/ConfirmDialog";
-import MonthCalendar from "../components/MonthCalendar";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
 import { getRecentUniqueOptions } from "../utils/recentOptions";
+
+// No visitDate/visitTime/status here on purpose: the visit window comes from the
+// chosen Visit Setup, and Status is no longer used. setupIds is UI-only.
 export const emptyAppt = {
-  id: "", auction: "", visitorName: "", phone: "", company: "",
-  visitDate: "", visitTime: "", assignedStaff: "", status: "Requested", notes: "",
-  setupId: "", batch: "", guideName: "", guidePhone: "", address: "", items: "",
-  quantity: "", mapsLink: "",
-  // setupIds: used only while registering a NEW visitor (not while
-  // editing) — lets one visitor be booked into several batches from the
-  // same auctioning company in a single form submission. save() creates
-  // one Appointment per id in here. Editing an existing appointment
-  // still uses the single `setupId` above; splitting an already-booked
-  // multi-batch visit back apart isn't something this feature needs to
-  // support, since each batch already became its own Appointment row
-  // the moment it was created.
-  setupIds: [],
+  id: "", auction: "", visitorName: "", phone: "", company: "", assignedStaff: "", notes: "",
+  setupId: "", batch: "", guideName: "", guidePhone: "", address: "", items: "", quantity: "",
+  mapsLink: "", isCustom: false, setupIds: [],
 };
 
-const WHEN_PRESETS = [
-  { key: "all", label: "Any day" },
-  { key: "today", label: "Today" },
-  { key: "yesterday", label: "Yesterday" },
-  { key: "week", label: "This week" },
-  { key: "month", label: "This month" },
-];
+const TH = "text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]";
+const TD = "py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]";
+const FILTER = "font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]";
+const BTN = "font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)]";
+const BTN_PRIMARY = BTN + " bg-[color:var(--brass)] text-white border-[color:var(--brass)]";
+const BTN_GHOST = BTN + " bg-transparent";
+const BTN_SM = "font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label";
+const BTN_DANGER_SM = "font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label";
+const LABEL = "block mb-1 text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-3)]";
+const ERR = "bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md";
+
+const pick = (d) => ({
+  auction: d.auction, visitorName: d.visitorName, phone: d.phone, company: d.company,
+  assignedStaff: d.assignedStaff, notes: d.notes, setupId: d.setupId, batch: d.batch,
+  guideName: d.guideName, guidePhone: d.guidePhone, address: d.address, items: d.items,
+  quantity: d.quantity, mapsLink: d.mapsLink, isCustom: false,
+});
 
 export default function Visitations({ appointments, setAppointments, visitSetups, setFollowups, canEdit, addAudit, session }) {
-  const [when, setWhen] = useState("all");
-  const [pickDate, setPickDate] = useState("");
   const [fCompany, setFCompany] = useState("All");
   const [fBatch, setFBatch] = useState("All");
   const [fGuide, setFGuide] = useState("All");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyAppt);
+  const [modalCompanyFilter, setModalCompanyFilter] = useState("All");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [bulkError, setBulkError] = useState("");
-  const [viewMode, setViewMode] = useState("list"); // "list" | "calendar"
   const sel = useRowSelection((a) => a.id);
   const { pending, confirm, cancel, run } = useConfirm();
+  const loc = useSavedLocations();
 
-  // Preview modal state for confirmation sending
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
@@ -61,70 +62,7 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   const [confirmSending, setConfirmSending] = useState(false);
   const [confirmNotice, setConfirmNotice] = useState(null);
 
-  async function openPreview() {
-    const rows = sel.selectedFrom(sorted);
-    if (!rows.length) return;
-    setPreviewOpen(true);
-    setPreviewLoading(true);
-    setPreviewError("");
-    try {
-      const results = await Promise.all(
-        rows.map((a) => appointmentsApi.previewConfirmation(a.id).then((r) => ({ ...r, name: a.visitorName })))
-      );
-      setPreviewItems(results);
-    } catch (err) {
-      setPreviewError(err.body?.message || "Couldn't load preview — try again.");
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
-
-  async function sendConfirmationSelected() {
-    const rows = sel.selectedFrom(sorted);
-    if (!rows.length) return;
-    setConfirmSending(true);
-    setConfirmNotice(null);
-    try {
-      const { results } = await appointmentsApi.sendConfirmationBulk(rows.map((a) => a.id));
-      const okCount = results.filter((r) => r.ok).length;
-      const failCount = results.length - okCount;
-      results.forEach((r) => {
-        const row = rows.find((a) => a.id === r.id);
-        if (row && r.ok) {
-          const guidePart = r.guide ? `, guide ${r.guide.status}` : ", no guide phone on file — guide SMS skipped";
-          addAudit("Send visitation confirmation", "—", r.id, `${row.visitorName} · visitor ${r.visitor.status}${guidePart}`);
-        }
-      });
-      setConfirmNotice({
-        kind: failCount ? "error" : "ok",
-        text: failCount
-          ? `${okCount} sent, ${failCount} failed. Check individual records for details.`
-          : `Confirmation sent for ${okCount} record${okCount === 1 ? "" : "s"}.`,
-      });
-      setPreviewOpen(false);
-      sel.clear();
-    } catch (err) {
-      setConfirmNotice({ kind: "error", text: err.body?.message || "Couldn't send confirmation — try again." });
-    } finally {
-      setConfirmSending(false);
-    }
-  }
-
-  async function bulkDelete() {
-    const rows = sel.selectedFrom(sorted);
-    if (!rows.length) return;
-    confirm(`Permanently delete ${rows.length} visitation(s)? This cannot be undone.`, async () => {
-      setBulkError("");
-      try {
-        await Promise.all(rows.map((a) => appointmentsApi.deleteAppointment(a.id)));
-        setAppointments((prev) => prev.filter((a) => !rows.some((r) => r.id === a.id)));
-        rows.forEach((a) => addAudit("Delete visitation", `${a.id} · ${a.visitorName}`, "—", "Permanently removed"));
-        sel.clear();
-      } catch (err) {
-        setBulkError(err.body?.message || "Couldn't delete one or more visitations — try again.");
-      }
-    });
-  }
+  const nameOf = (a) => a.visitorName || a.phone;
 
   const companyOptions = useMemo(() => [...new Set(visitSetups.map((v) => v.company))], [visitSetups]);
   const batchOptions = useMemo(
@@ -137,288 +75,289 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   const setupOptions = useMemo(() => {
     if (draft.setupId && !openVisitSetups.some((v) => v.id === draft.setupId)) {
       const current = visitSetups.find((v) => v.id === draft.setupId);
-      if (current) return [
-        openVisitSetups, current];
+      if (current) return [...openVisitSetups, current]; // keep editing a now-closed setup visible
     }
     return openVisitSetups;
   }, [openVisitSetups, visitSetups, draft.setupId]);
 
-  const auctionOptions = useMemo(
-    () => getRecentUniqueOptions(appointments, (a) => a.auction, (a) => a.visitDate, 30),
-    [appointments]
-  );
-  // 3d: repeat visitors — offer their phone from history.
   const phoneOptions = useMemo(
-    () => getRecentUniqueOptions(appointments, (a) => a.phone, (a) => a.visitDate, 30),
+    () => getRecentUniqueOptions(appointments, (a) => a.phone, (a) => a.createdAt, 30),
     [appointments]
   );
 
   const filtered = appointments.filter((a) => {
-    if (pickDate) { if (a.visitDate !== pickDate) return false; }
-    else if (when !== "all" && !dateInPreset(a.visitDate, when)) return false;
     if (fCompany !== "All" && a.company !== fCompany) return false;
     if (fBatch !== "All" && a.batch !== fBatch) return false;
     if (fGuide !== "All" && a.guideName !== fGuide) return false;
     return true;
   });
-  const sorted = [...filtered].sort((a, b) => new Date(a.visitDate) - new Date(b.visitDate));
-  function clearWhen() { setWhen("all"); setPickDate(""); }
-
-  function openNew() { setEditing(null); setDraft({ ...emptyAppt, setupIds: [] }); setModalCompanyFilter("All"); setSaveError(""); setModalOpen(true); }
-  function openEdit(a) { setEditing(a.id); setDraft({ ...a, setupIds: a.setupId ? [a.setupId] : [] }); setModalCompanyFilter(a.company || "All"); setSaveError(""); setModalOpen(true); }
-  function openEditSelected() {
-    const rows = sel.selectedFrom(sorted);
-    if (rows.length === 1) openEdit(rows[0]);
-  }
-
-  function applySetup(setupId) {
-    const s = visitSetups.find((v) => v.id === setupId);
-    if (!s) { setDraft((d) => ({ ...d, setupId: "" })); return; }
-    setDraft((d) => ({
-      ...d, setupId: s.id, company: s.company, batch: s.batch,
-      guideName: s.guideName, guidePhone: s.guidePhone, address: s.address, items: s.items,
-      assignedStaff: s.guideName,
-    }));
-  }
-  const selectedSetup = visitSetups.find((v) => v.id === draft.setupId);
-
-  // Same auctioning company can have several batches open at once (e.g.
-  // "Batch 001" and "Batch 002" both viewable this week) — a visitor
-  // may want to see more than one on the same trip. While registering a
-  // NEW visitor (not editing), the setup picker below becomes a
-  // multi-select filtered by company; toggling a batch here doesn't
-  // touch draft.company/batch/guideName directly (those stay per-setup,
-  // resolved at save time) — it only tracks which setup IDs are picked.
-  function toggleSetupSelection(setupId) {
-    setDraft((d) => {
-      const already = d.setupIds.includes(setupId);
-      const setupIds = already ? d.setupIds.filter((id) => id !== setupId) : [...d.setupIds, setupId];
-      // Keep the single-setup preview fields (address/items/guide shown
-      // above the checklist) in sync with whichever setup was picked
-      // most recently, purely for the little info box — the real,
-      // possibly-differing-per-batch values are read fresh from
-      // visitSetups at save time for each created Appointment.
-      const last = setupIds.length ? visitSetups.find((v) => v.id === setupIds[setupIds.length - 1]) : null;
-      return {
-        ...d,
-        setupIds,
-        setupId: last ? last.id : "",
-        company: last ? last.company : d.company,
-        batch: last ? last.batch : d.batch,
-        guideName: last ? last.guideName : d.guideName,
-        guidePhone: last ? last.guidePhone : d.guidePhone,
-        address: last ? last.address : d.address,
-        items: last ? last.items : d.items,
-      };
-    });
-  }
+  // Newest registration first. visitDate can't sort these anymore — it's null
+  // for setup-backed and custom visits, and the real dates live on the setup.
+  const sorted = [...filtered].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   const modalSetupCompanyOptions = useMemo(() => [...new Set(setupOptions.map((v) => v.company))], [setupOptions]);
-  const [modalCompanyFilter, setModalCompanyFilter] = useState("All");
   const setupsForModal = useMemo(
     () => setupOptions.filter((v) => modalCompanyFilter === "All" || v.company === modalCompanyFilter),
     [setupOptions, modalCompanyFilter]
   );
   const selectedSetupsDetail = draft.setupIds.map((id) => visitSetups.find((v) => v.id === id)).filter(Boolean);
+  const selectedSetup = visitSetups.find((v) => v.id === draft.setupId);
 
+  /* ---------- preview / send ---------- */
+  async function openPreview() {
+    const rows = sel.selectedFrom(sorted);
+    if (!rows.length) return;
+    setPreviewOpen(true); setPreviewLoading(true); setPreviewError("");
+    try {
+      const results = await Promise.all(
+        rows.map((a) => appointmentsApi.previewConfirmation(a.id).then((r) => ({ ...r, name: nameOf(a) })))
+      );
+      setPreviewItems(results);
+    } catch (err) {
+      setPreviewError(err.body?.message || "Couldn't load preview — try again.");
+    } finally { setPreviewLoading(false); }
+  }
+
+  async function sendConfirmationSelected() {
+    const rows = sel.selectedFrom(sorted);
+    if (!rows.length) return;
+    setConfirmSending(true); setConfirmNotice(null);
+    try {
+      const { results } = await appointmentsApi.sendConfirmationBulk(rows.map((a) => a.id));
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      results.forEach((r) => {
+        const row = rows.find((a) => a.id === r.id);
+        if (!row || !r.ok) return;
+        if (r.isCustom) {
+          loc.persist(row.address, row.mapsLink, "once"); // quiet upsert, fail soft
+          addAudit("Send visitation confirmation", "—", r.id, `${nameOf(row)} · custom visit (no pass) · visitor ${r.visitor.status}`);
+        } else {
+          const guidePart = r.guide ? `, guide ${r.guide.status}` : ", no guide phone on file — guide SMS skipped";
+          addAudit("Send visitation confirmation", "—", r.id, `${nameOf(row)} · visitor ${r.visitor.status}${guidePart}`);
+        }
+      });
+      setConfirmNotice({
+        kind: failCount ? "error" : "ok",
+        text: failCount
+          ? `${okCount} sent, ${failCount} failed. Check individual records for details.`
+          : `Confirmation sent for ${okCount} record${okCount === 1 ? "" : "s"}.`,
+      });
+      setPreviewOpen(false); sel.clear();
+    } catch (err) {
+      setConfirmNotice({ kind: "error", text: err.body?.message || "Couldn't send confirmation — try again." });
+    } finally { setConfirmSending(false); }
+  }
+
+  async function bulkDelete() {
+    const rows = sel.selectedFrom(sorted);
+    if (!rows.length) return;
+    confirm(`Permanently delete ${rows.length} visitation(s)? This cannot be undone.`, async () => {
+      setBulkError("");
+      try {
+        await Promise.all(rows.map((a) => appointmentsApi.deleteAppointment(a.id)));
+        setAppointments((prev) => prev.filter((a) => !rows.some((r) => r.id === a.id)));
+        rows.forEach((a) => addAudit("Delete visitation", `${a.id} · ${nameOf(a)}`, "—", "Permanently removed"));
+        sel.clear();
+      } catch (err) {
+        setBulkError(err.body?.message || "Couldn't delete one or more visitations — try again.");
+      }
+    });
+  }
+
+  /* ---------- modal open/close helpers ---------- */
+  function openNew() {
+    setEditing(null); setDraft({ ...emptyAppt, setupIds: [] });
+    setModalCompanyFilter("All"); loc.setChoice("once"); setSaveError(""); setModalOpen(true);
+  }
+  function openEdit(a) {
+    setEditing(a.id);
+    setDraft({ ...emptyAppt, ...a, setupIds: a.setupId ? [a.setupId] : [] });
+    setModalCompanyFilter(a.company || "All"); loc.setChoice("once"); setSaveError(""); setModalOpen(true);
+  }
+  function openEditSelected() {
+    const rows = sel.selectedFrom(sorted);
+    if (rows.length === 1) openEdit(rows[0]);
+  }
+
+  // Edit mode: single setup dropdown
+  function applySetup(setupId) {
+    const s = visitSetups.find((v) => v.id === setupId);
+    if (!s) { setDraft((d) => ({ ...d, setupId: "" })); return; }
+    setDraft((d) => ({
+      ...d, setupId: s.id, company: s.company, batch: s.batch, guideName: s.guideName,
+      guidePhone: s.guidePhone, address: s.address, mapsLink: s.mapsLink || "", items: s.items,
+      assignedStaff: s.guideName,
+    }));
+  }
+
+  // New mode: multi-select, exclusive with Custom
+  function toggleSetupSelection(setupId) {
+    setDraft((d) => {
+      const base = d.isCustom ? { ...d, isCustom: false, address: "", mapsLink: "" } : d;
+      const already = base.setupIds.includes(setupId);
+      const setupIds = already ? base.setupIds.filter((id) => id !== setupId) : [...base.setupIds, setupId];
+      const last = setupIds.length ? visitSetups.find((v) => v.id === setupIds[setupIds.length - 1]) : null;
+      return {
+        ...base, setupIds,
+        setupId: last ? last.id : "",
+        company: last ? last.company : base.company,
+        batch: last ? last.batch : base.batch,
+        guideName: last ? last.guideName : base.guideName,
+        guidePhone: last ? last.guidePhone : base.guidePhone,
+        address: last ? last.address : base.address,
+        mapsLink: last ? (last.mapsLink || "") : base.mapsLink,
+        items: last ? last.items : base.items,
+      };
+    });
+  }
+
+  function toggleCustom() {
+    setDraft((d) =>
+      d.isCustom
+        ? { ...d, isCustom: false, address: "", mapsLink: "" }
+        : { ...emptyAppt, isCustom: true, phone: d.phone, setupIds: [] }
+    );
+    loc.setChoice("once");
+  }
+
+  /* ---------- save ---------- */
   async function save() {
-    if (!draft.visitorName || !draft.phone || !draft.visitDate) return;
     if (!isValidEthiopianPhone(draft.phone)) {
-      setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
-      return;
+      setSaveError(`Phone number isn't valid. ${PHONE_HINT}`); return;
+    }
+    if (draft.isCustom) {
+      if (!draft.address.trim()) { setSaveError("Place name / address is required."); return; }
+      if (!draft.mapsLink.trim()) { setSaveError("Google Maps link is required."); return; }
+    } else {
+      if (!draft.visitorName.trim()) { setSaveError("Visitor name is required."); return; }
+      if (!editing && !draft.setupIds.length) { setSaveError("Pick at least one visit setup, or choose Custom."); return; }
     }
 
-    setSaving(true);
-    setSaveError("");
+    setSaving(true); setSaveError("");
     try {
-      if (editing) {
-        const prev = appointments.find((a) => a.id === editing);
-        const updated = await appointmentsApi.updateAppointment(editing, draft);
-        setAppointments((prev2) => prev2.map((a) => (a.id === editing ? { ...a, ...updated } : a)));
-        if (prev && prev.status !== draft.status) addAudit("Update visitation status", prev.status, draft.status, `${draft.id} · ${draft.visitorName}`);
-      } else if (draft.setupIds.length > 1) {
-        // Multi-batch registration: one Appointment per selected setup,
-        // sharing the same visitor/date/time/notes — each batch's own
-        // company/guide/address/items comes from ITS OWN VisitSetup
-        // record, not from whatever was last clicked in the picker.
+      if (draft.isCustom) {
+        const payload = { isCustom: true, visitorName: "", phone: draft.phone, address: draft.address.trim(), mapsLink: draft.mapsLink.trim() };
+        if (editing) {
+          const updated = await appointmentsApi.updateAppointment(editing, payload);
+          setAppointments((prev) => prev.map((a) => (a.id === editing ? { ...a, ...updated } : a)));
+        } else {
+          const created = await appointmentsApi.createAppointment(payload);
+          setAppointments((prev) => [created, ...prev]);
+          addAudit("Register custom visitor", "—", `${created.id} created`, `${created.phone} · ${created.address}`);
+        }
+        await loc.persist(payload.address, payload.mapsLink, loc.choice);
+      } else if (editing) {
+        const updated = await appointmentsApi.updateAppointment(editing, pick(draft));
+        setAppointments((prev) => prev.map((a) => (a.id === editing ? { ...a, ...updated } : a)));
+        addAudit("Edit visitation", "—", editing, nameOf(draft));
+      } else {
         const created = [];
         for (const setupId of draft.setupIds) {
           const s = visitSetups.find((v) => v.id === setupId);
           if (!s) continue;
-          const payload = {
-            ...draft,
-            setupId: s.id, company: s.company, batch: s.batch,
-            guideName: s.guideName, guidePhone: s.guidePhone,
-            address: s.address, items: s.items, assignedStaff: s.guideName,
-          };
-          const row = await appointmentsApi.createAppointment(payload);
-          created.push(row);
+          created.push(await appointmentsApi.createAppointment({
+            ...pick(draft), setupId: s.id, company: s.company, batch: s.batch, guideName: s.guideName,
+            guidePhone: s.guidePhone, address: s.address, mapsLink: s.mapsLink || "", items: s.items,
+            assignedStaff: s.guideName,
+          }));
         }
-        setAppointments((prev2) => [...created, ...prev2]);
-        addAudit(
-          "Register visitor",
-          "—",
-          `${created.map((c) => c.id).join(", ")} created`,
-          `${draft.visitorName} · ${created.length} batches (${created.map((c) => c.batch).join(", ")})`
-        );
-        try {
-          const refreshed = await followupsApi.listFollowups();
-          setFollowups(refreshed || []);
-        } catch { /* non-fatal — follow-up list just won't refresh this instant */ }
-      } else {
-        const created = await appointmentsApi.createAppointment(draft);
-        setAppointments((prev2) => [created, ...prev2]);
-        addAudit("Register visitor", "—", `${created.id} created`, `${created.visitorName} · ${created.company} · ${created.batch}`);
-        try {
-          const refreshed = await followupsApi.listFollowups();
-          setFollowups(refreshed || []);
-        } catch { /* non-fatal — follow-up list just won't refresh this instant */ }
+        setAppointments((prev) => [...created, ...prev]);
+        addAudit("Register visitor", "—", `${created.map((c) => c.id).join(", ")} created`,
+          `${draft.visitorName} · ${created.map((c) => c.batch).join(", ")}`);
+        // The backend created one follow-up per appointment server-side; refetch
+        // rather than hand-rolling them here so the dates match the server's rule.
+        try { setFollowups((await followupsApi.listFollowups()) || []); } catch { /* non-fatal */ }
       }
-      setModalOpen(false);
-      sel.clear();
+      setModalOpen(false); sel.clear();
     } catch (err) {
       setSaveError(err.body?.message || "Couldn't save — try again.");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
-  // Bulk status change for visitations — e.g. mark several as Confirmed
-  // or Completed after a visit day without opening each one individually.
-  async function bulkSetStatus(status) {
-    const rows = sel.selectedFrom(sorted);
-    if (!rows.length) return;
-    setBulkError("");
-    try {
-      const updates = await Promise.all(rows.map((a) => appointmentsApi.updateAppointment(a.id, { status })));
-      setAppointments((prev) => prev.map((x) => {
-        const idx = rows.findIndex((r) => r.id === x.id);
-        return idx === -1 ? x : { ...x, ...updates[idx] };
-      }));
-      rows.forEach((a) => addAudit("Update visitation status", a.status, status, `${a.id} · ${a.visitorName}`));
-      sel.clear();
-    } catch (err) {
-      setBulkError(err.body?.message || "Couldn't update one or more visitations — try again.");
-    }
-  }
+  const multi = draft.setupIds.length > 1;
 
   return (
     <div>
       <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] p-3.5 flex flex-wrap gap-2 items-center mb-4">
-        <select
-          className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]"
-          value={pickDate ? "custom" : when}
-          onChange={(e) => { const v = e.target.value; if (v === "custom") { setWhen("all"); } else { setWhen(v); setPickDate(""); } }}
-        >
-          {WHEN_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-          <option value="custom">Custom date…</option>
-        </select>
-        <div className="flex gap-1 ml-2">
-          <button
-            className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] px-2.5 py-[5px] text-xs cursor-pointer" + (viewMode === "list" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : " bg-[color:var(--panel)] text-[color:var(--text)]")}
-            onClick={() => setViewMode("list")}
-          >List</button>
-          <button
-            className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] px-2.5 py-[5px] text-xs cursor-pointer" + (viewMode === "calendar" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : " bg-[color:var(--panel)] text-[color:var(--text)]")}
-            onClick={() => setViewMode("calendar")}
-          >Calendar</button>
-        </div>
-
-        <input className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" type="date" value={pickDate} onChange={(e) => setPickDate(e.target.value)} title="Pick a specific day" />
-        <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fCompany} onChange={(e) => { setFCompany(e.target.value); setFBatch("All"); }} title="Filter by company">
+        <select className={FILTER} value={fCompany} onChange={(e) => { setFCompany(e.target.value); setFBatch("All"); }}>
           <option value="All">All companies</option>{companyOptions.map((c) => <option key={c}>{c}</option>)}
         </select>
-        <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fBatch} onChange={(e) => setFBatch(e.target.value)} title="Filter by batch">
+        <select className={FILTER} value={fBatch} onChange={(e) => setFBatch(e.target.value)}>
           <option value="All">All batches</option>{batchOptions.map((b) => <option key={b}>{b}</option>)}
         </select>
-        <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fGuide} onChange={(e) => setFGuide(e.target.value)} title="Filter by guide">
+        <select className={FILTER} value={fGuide} onChange={(e) => setFGuide(e.target.value)}>
           <option value="All">All guides</option>{guideOptions.map((g) => <option key={g}>{g}</option>)}
         </select>
-        {(when !== "all" || pickDate || fCompany !== "All" || fBatch !== "All" || fGuide !== "All") &&
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent px-2.5 py-[5px] text-xs" onClick={() => { clearWhen(); setFCompany("All"); setFBatch("All"); setFGuide("All"); }}>Clear filters</button>}
-        {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)] btn-icon-label" style={{ marginLeft: "auto" }} onClick={openNew}>
-          <PlusIcon /><span>Register visitor</span>
-        </button>}
+        {(fCompany !== "All" || fBatch !== "All" || fGuide !== "All") && (
+          <button className={BTN_GHOST + " px-2.5 py-[5px] text-xs"} onClick={() => { setFCompany("All"); setFBatch("All"); setFGuide("All"); }}>Clear filters</button>
+        )}
+        {canEdit && (
+          <button className={BTN_PRIMARY + " btn-icon-label"} style={{ marginLeft: "auto" }} onClick={openNew}>
+            <PlusIcon /><span>Register visitor</span>
+          </button>
+        )}
       </div>
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
-            <EditIcon /><span>Edit</span>
-          </button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={openPreview}>
-            <SendIcon /><span>Send confirmation</span>
-          </button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--blue)] bg-[color:var(--blue-bg)] text-[color:var(--blue)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Confirmed")}>
-            <CheckIcon /><span>Mark Confirmed</span>
-          </button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Completed")}>
-            <CheckIcon /><span>Mark Completed</span>
-          </button>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={!sel.selectedCount} onClick={() => bulkSetStatus("Cancelled")}>
-            Mark Cancelled
-          </button>
+          <button className={BTN_SM} disabled={sel.selectedCount !== 1} onClick={openEditSelected}><EditIcon /><span>Edit</span></button>
+          <button className={BTN_SM} disabled={!sel.selectedCount} onClick={openPreview}><SendIcon /><span>Send confirmation</span></button>
           {session && ["administrator", "auction_manager"].includes(session.role) && (
-            <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkDelete}>
-              <DeleteIcon /><span>Delete</span>
-            </button>
+            <button className={BTN_DANGER_SM} disabled={!sel.selectedCount} onClick={bulkDelete}><DeleteIcon /><span>Delete</span></button>
           )}
         </BulkActionBar>
       )}
-      {bulkError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>{bulkError}</div>}
+      {bulkError && <div className={ERR} style={{ marginBottom: 12 }}>{bulkError}</div>}
       {confirmNotice && (
-        <div
-          className={confirmNotice.kind === "ok"
-            ? "bg-[color:var(--green-bg)] text-[color:var(--green)] text-[12.5px] px-3 py-2 rounded-md"
-            : "bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md"}
-          style={{ marginBottom: 12 }}
-        >
-          {confirmNotice.text}
-        </div>
+        <div className={confirmNotice.kind === "ok"
+          ? "bg-[color:var(--green-bg)] text-[color:var(--green)] text-[12.5px] px-3 py-2 rounded-md" : ERR}
+          style={{ marginBottom: 12 }}>{confirmNotice.text}</div>
       )}
 
-      {viewMode === "calendar" ? (
-        <MonthCalendar
-          items={sorted.map((a) => ({ ...a, date: a.visitDate }))}
-          getKey={(a) => a.id}
-          getLabel={(a) => `${a.visitTime} ${a.visitorName}`}
-          onItemClick={(a) => openEdit(a)}
-        />
-        ) : (
-          sorted.length === 0 ? <EmptyState text="No visitations found." /> : (
-            <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-              <div style={{ overflowX: "auto" }}>
-                <table className="w-full border-collapse text-[13px] min-w-[640px]">
-                  <thead><tr className="group">
-                    {canEdit && <HeaderCheckbox checked={sel.isAllSelected(sorted)} onChange={() => sel.toggleAll(sorted)} />}
-                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Visitor</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company / Batch</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Time</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Verification</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
-                  </tr></thead>
-                  <tbody>
-                    {sorted.map((a) => (
-                      <tr key={a.id} className="group">
-                        {canEdit && <RowCheckbox checked={sel.isSelected(a)} onChange={() => sel.toggle(a)} label={`Select ${a.id}`} />}
-                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{a.id}</td>
-                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.visitorName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.phone}</div></td>
-                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.company}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.batch}</div></td>
-                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(a.visitDate)}</td>
-                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{a.visitTime}</td>
-                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{a.guideName || a.assignedStaff}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.guidePhone}</div></td>
-                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                          <Stamp text={a.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[a.verificationStatus] || "gray"} />
-                        </td>
-                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={a.status} kind={APPT_STAMP[a.status]} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-        )
+      {sorted.length === 0 ? <EmptyState text="No visitations found." /> : (
+        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+          <div style={{ overflowX: "auto" }}>
+            <table className="w-full border-collapse text-[13px] min-w-[640px]">
+              <thead><tr className="group">
+                {canEdit && <HeaderCheckbox checked={sel.isAllSelected(sorted)} onChange={() => sel.toggleAll(sorted)} />}
+                <th className={TH}>ID</th><th className={TH}>Visitor</th><th className={TH}>Company / Batch</th>
+                <th className={TH}>Visit window</th><th className={TH}>Guide</th><th className={TH}>Verification</th>
+              </tr></thead>
+              <tbody>
+                {sorted.map((a) => (
+                  <tr key={a.id} className="group">
+                    {canEdit && <RowCheckbox checked={sel.isSelected(a)} onChange={() => sel.toggle(a)} label={`Select ${a.id}`} />}
+                    <td className={TD + " font-mono"}>{a.id}</td>
+                    <td className={TD}>
+                      {nameOf(a)}
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                        {a.visitorName ? a.phone : ""}{a.isCustom ? `${a.visitorName ? " · " : ""}Custom — ID only` : ""}
+                      </div>
+                    </td>
+                    <td className={TD}>
+                      {a.isCustom ? (
+                        a.mapsLink
+                          ? <a href={a.mapsLink} target="_blank" rel="noreferrer" className="text-[color:var(--blue)] underline underline-offset-2">{a.address}</a>
+                          : a.address
+                      ) : (<>{a.company}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.batch}</div></>)}
+                    </td>
+                    <td className={TD + " font-mono"}>{a.isCustom ? "—" : fmtWindow(a.visitWindow)}</td>
+                    <td className={TD}>
+                      {a.isCustom ? "—" : (<>{a.guideName || a.assignedStaff}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.guidePhone}</div></>)}
+                    </td>
+                    <td className={TD}><Stamp text={a.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[a.verificationStatus] || "gray"} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "Register visitor"} wide>
         <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
-          {editing ? (
+          {editing && !draft.isCustom && (
             <>
               <Field label="Auction visit setup" full>
                 <select className={inputCls} value={draft.setupId} onChange={(e) => applySetup(e.target.value)}>
@@ -428,110 +367,86 @@ export default function Visitations({ appointments, setAppointments, visitSetups
               </Field>
               {selectedSetup && (
                 <div className="col-span-2" style={{ fontSize: 12.5, color: "var(--text-2)", background: "var(--paper)", borderRadius: 6, padding: "8px 10px" }}>
-                  <b>{selectedSetup.address}</b> — {selectedSetup.items}<br />
+                  <b>{selectedSetup.address}</b>{selectedSetup.mapsLink ? " (map link set)" : ""} — {selectedSetup.items}<br />
                   Guide {selectedSetup.guideName} ({selectedSetup.guidePhone}), {selectedSetup.guideTimeFrom}–{selectedSetup.guideTimeTo}
                 </div>
               )}
             </>
-          ) : (
-            <Field label="Auction visit setup(s)" full>
-              <div className="text-[11.5px] text-[color:var(--text-3)] mb-2">
-                Pick one or more open batches — even from the same company — to register this visitor for all of them at once.
-              </div>
-              <select
-                className={inputCls}
-                value={modalCompanyFilter}
-                onChange={(e) => setModalCompanyFilter(e.target.value)}
-                style={{ marginBottom: 8 }}
-              >
+          )}
+
+          {!editing && (
+            <div className="col-span-2">
+              <div className={LABEL}>Auction visit setup(s)</div>
+              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 12px", marginBottom: 8, cursor: "pointer", fontSize: 13, border: "1px solid var(--border)", borderRadius: 8, background: draft.isCustom ? "var(--brass-bg)" : "var(--paper)" }}>
+                <input type="checkbox" checked={draft.isCustom} onChange={toggleCustom} style={{ marginTop: 2 }} />
+                <span><b>Custom — ID only (no guide)</b>
+                  <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Visitor just shows an ID. Gets one SMS with the place and map link — no pass, QR or follow-up.</div>
+                </span>
+              </label>
+              <select className={inputCls} value={modalCompanyFilter} onChange={(e) => setModalCompanyFilter(e.target.value)} style={{ marginBottom: 8 }}>
                 <option value="All">All companies</option>
                 {modalSetupCompanyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-              <div
-                style={{
-                  border: "1px solid var(--border)", borderRadius: 8, maxHeight: 190, overflowY: "auto",
-                  background: "var(--paper)",
-                }}
-              >
+              <div style={{ border: "1px solid var(--border)", borderRadius: 8, maxHeight: 190, overflowY: "auto", background: "var(--paper)" }}>
                 {setupsForModal.length === 0 ? (
                   <div style={{ padding: 12, fontSize: 12.5, color: "var(--text-3)", fontStyle: "italic" }}>No open batches for this company.</div>
-                ) : (
-                  setupsForModal.map((v) => (
-                    <label
-                      key={v.id}
-                      style={{
-                        display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 12px",
-                        borderBottom: "1px solid var(--border)", cursor: "pointer", fontSize: 13,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={draft.setupIds.includes(v.id)}
-                        onChange={() => toggleSetupSelection(v.id)}
-                        style={{ marginTop: 2 }}
-                      />
-                      <span>
-                        <b>{v.company}</b> — {v.batch}
-                        <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-                          Guide: {v.guideName} ({v.guidePhone}) · {v.address}
-                        </div>
-                      </span>
-                    </label>
-                  ))
-                )}
+                ) : setupsForModal.map((v) => (
+                  <label key={v.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--border)", cursor: "pointer", fontSize: 13 }}>
+                    <input type="checkbox" checked={draft.setupIds.includes(v.id)} onChange={() => toggleSetupSelection(v.id)} style={{ marginTop: 2 }} />
+                    <span><b>{v.company}</b> — {v.batch}
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Guide: {v.guideName} ({v.guidePhone}) · {v.address}</div>
+                    </span>
+                  </label>
+                ))}
               </div>
               {selectedSetupsDetail.length > 0 && (
                 <div className="flex flex-wrap gap-1.5" style={{ marginTop: 8 }}>
                   {selectedSetupsDetail.map((v) => (
-                    <span
-                      key={v.id}
-                      className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-[0.04em] px-2 py-1 rounded-[4px] text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)] border border-[color:var(--brass)]/30"
-                    >
+                    <span key={v.id} className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-[0.04em] px-2 py-1 rounded-[4px] text-[color:var(--brass-dark)] bg-[color:var(--brass-bg)]">
                       {v.company} — {v.batch}
-                      <button
-                        type="button"
-                        onClick={() => toggleSetupSelection(v.id)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: 700, padding: 0, marginLeft: 2 }}
-                        aria-label={`Remove ${v.batch}`}
-                      >
-                        ×
-                      </button>
+                      <button type="button" onClick={() => toggleSetupSelection(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: 700, padding: 0, marginLeft: 2 }} aria-label={`Remove ${v.batch}`}>×</button>
                     </span>
                   ))}
                 </div>
               )}
-            </Field>
+            </div>
           )}
-          <Field label="Visitor name"><input className={inputCls} value={draft.visitorName} onChange={(e) => setDraft({ ...draft, visitorName: e.target.value })} /></Field>
-          <Field label="Phone number">
-            <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past visitor or type a new number" />
-          </Field>
-          <Field label="Visit date"><input type="date" className={inputCls} value={draft.visitDate} onChange={(e) => setDraft({ ...draft, visitDate: e.target.value })} /></Field>
-          <Field label="Visit time"><input type="time" className={inputCls} value={draft.visitTime} onChange={(e) => setDraft({ ...draft, visitTime: e.target.value })} /></Field>
-          <Field label="Quantity (optional)">
-            <input className={inputCls} placeholder="e.g. 1, or 3 lots" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} />
-          </Field>
-          <Field label="Google Maps link (optional)" full>
-            <input className={inputCls} placeholder="https://maps.google.com/…" value={draft.mapsLink} onChange={(e) => setDraft({ ...draft, mapsLink: e.target.value })} />
-          </Field>
-          {editing && (
-            <Field label="Status"><select className={inputCls} value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>{APPT_STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
+
+          {draft.isCustom ? (
+            <>
+              <Field label="Phone number" full>
+                <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past visitor or type a new number" />
+              </Field>
+              <LocationFields loc={loc} addressLabel="Place name / address" address={draft.address} mapsLink={draft.mapsLink}
+                onChange={(p) => setDraft((d) => ({ ...d, ...p }))} />
+            </>
+          ) : (
+            <>
+              <Field label="Visitor name"><input className={inputCls} value={draft.visitorName} onChange={(e) => setDraft({ ...draft, visitorName: e.target.value })} /></Field>
+              <Field label="Phone number">
+                <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past visitor or type a new number" />
+              </Field>
+              <Field label="Quantity (optional)"><input className={inputCls} placeholder="e.g. 1, or 3 lots" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} /></Field>
+              <Field label="Notes" full><textarea className={inputCls} rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
+            </>
           )}
-          <Field label="Notes" full><textarea className={inputCls} rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
         </div>
+
         {!editing && (
           <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-            {draft.setupIds.length > 1
-              ? `This will create ${draft.setupIds.length} separate visitation records (one per batch) and add each to Follow-ups.`
-              : "Registering this visitor automatically adds them to the Follow-ups list for a call back after the visit."}
+            {draft.isCustom
+              ? "Custom visits get one SMS (place + map link). No guide, pass, QR or follow-up."
+              : multi
+                ? `This creates ${draft.setupIds.length} visitation records (one per batch). Each gets a follow-up dated 3 days before its setup's end date.`
+                : "The visitor can come any time in the setup's date range. A follow-up is added 3 days before the range ends."}
           </div>
         )}
-        {saveError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{saveError}</div>}
+        {saveError && <div className={ERR} style={{ marginTop: 10 }}>{saveError}</div>}
         <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" disabled={saving} onClick={save}>
-            {saving ? "Saving…" : editing ? "Save changes" : draft.setupIds.length > 1 ? `Register for ${draft.setupIds.length} batches` : "Register visitor"}
+          <button className={BTN_PRIMARY} disabled={saving} onClick={save}>
+            {saving ? "Saving…" : editing ? "Save changes" : multi ? `Register for ${draft.setupIds.length} batches` : "Register visitor"}
           </button>
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
+          <button className={BTN_GHOST} onClick={() => setModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
 
@@ -539,7 +454,7 @@ export default function Visitations({ appointments, setAppointments, visitSetups
         {previewLoading ? (
           <div style={{ fontSize: 13, color: "var(--text-3)", padding: "20px 0" }}>Loading preview…</div>
         ) : previewError ? (
-          <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md">{previewError}</div>
+          <div className={ERR}>{previewError}</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: 420, overflowY: "auto" }}>
             {previewItems.map((item) => (
@@ -547,30 +462,20 @@ export default function Visitations({ appointments, setAppointments, visitSetups
                 <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{item.id} — {item.name}</div>
                 <div style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>Visitor SMS</div>
                 <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, fontFamily: "inherit", margin: "0 0 10px", color: "var(--text-2)" }}>{item.visitorMessage}</pre>
-                {item.guideMessage && (
-                  <>
-                    <div style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>Guide SMS</div>
-                    <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, fontFamily: "inherit", margin: 0, color: "var(--text-2)" }}>{item.guideMessage}</pre>
-                  </>
-                )}
+                {item.guideMessage && (<>
+                  <div style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>Guide SMS</div>
+                  <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, fontFamily: "inherit", margin: 0, color: "var(--text-2)" }}>{item.guideMessage}</pre>
+                </>)}
               </div>
             ))}
           </div>
         )}
         <div className="flex flex-wrap gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-          <button
-            className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            disabled={previewLoading || !!previewError || confirmSending}
-            onClick={sendConfirmationSelected}
-          >
+          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={previewLoading || !!previewError || confirmSending} onClick={sendConfirmationSelected}>
             {confirmSending ? "Sending…" : `Send to ${previewItems.length} record${previewItems.length === 1 ? "" : "s"}`}
           </button>
-          <button
-            className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-transparent cursor-pointer"
-            onClick={() => setPreviewOpen(false)}
-          >
-            Cancel
-          </button>
+          <button className={BTN_GHOST} onClick={() => setPreviewOpen(false)}>Cancel</button>
         </div>
       </Modal>
 

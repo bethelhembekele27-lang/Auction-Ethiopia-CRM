@@ -9,7 +9,7 @@ from .throttles import LoginThrottle, PassVerifyThrottle
 from .models import (
     Employee, Inquiry, PERMISSIONS, Role, Followup, VisitSetup,
     Appointment, Complaint, Escalation, AuditLog, InquiryAttachment, PushSubscription,
-    PartyVerification, Pickup,
+    PartyVerification, Pickup, SavedLocation, address_key, PfmWinner,
 )
 from .serializers import (
     EmployeeCreateSerializer,
@@ -32,17 +32,24 @@ from .serializers import (
     AdminResetPasswordSerializer,
     PushSubscriptionSerializer,
     PickupSerializer,
+    validate_ethiopian_phone,
 )
 from django.contrib.auth.models import User
 from rest_framework.parsers import MultiPartParser
 from django.shortcuts import get_object_or_404
+import hmac
 import os
 from .push import send_push_to_user
+from .pfm_client import fetch_verified_winners
+from rest_framework import serializers as drf_serializers
 from .verification import (
     create_verification, build_visitation_messages, build_pickup_messages,
     build_visitation_preview, build_pickup_preview, send_and_log,
     resolve_pass, verify_token, VerificationError,
+    build_custom_visit_message,
 )
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError as DjangoValidationError
 # =============================================================================
 # Shared helpers
 # =============================================================================
@@ -94,6 +101,32 @@ def log_audit(request, action, previous_value='—', new_value='', reason=''):
     )
 
 
+def _who(name):
+    """CallerName is optional app-wide now, so push/audit copy that embeds
+    a name needs a placeholder rather than rendering an empty gap."""
+    return name or 'Unknown caller'
+
+
+def _send_one_appointment(request, appointment):
+    """Shared by single + bulk send. Custom visits: one SMS, no pass, no guide."""
+    if appointment.isCustom:
+        msg = build_custom_visit_message(appointment)
+        visitor_log = send_and_log('visitation', appointment.publicId, 'visitor', appointment.phone, msg)
+        guide_log = None
+        summary = f'{appointment.phone} · custom visit (no pass) · visitor {visitor_log.status}'
+    else:
+        verification = create_verification('visitation', appointment.publicId)
+        visitor_msg, guide_msg = build_visitation_messages(appointment, verification)
+        visitor_log = send_and_log('visitation', appointment.publicId, 'visitor', appointment.phone, visitor_msg)
+        guide_log = None
+        if appointment.guidePhone:
+            guide_log = send_and_log('visitation', appointment.publicId, 'guide', appointment.guidePhone, guide_msg)
+        summary = f'{appointment.visitorName or appointment.phone} · visitor {visitor_log.status}'
+        summary += f', guide {guide_log.status}' if guide_log else ', no guide phone on file — guide SMS skipped'
+    log_audit(request, 'Send visitation confirmation', '—', appointment.publicId, summary)
+    return visitor_log, guide_log
+
+
 # =============================================================================
 # Auth  (§1)
 # =============================================================================
@@ -119,7 +152,13 @@ class LoginView(RoleRequiredAPIView):
         user = serializer.validated_data['user']
         employee = serializer.validated_data['employee']
 
-        token, _ = Token.objects.get_or_create(user=user)
+        # Always mint a new token on login rather than reusing an existing
+        # one, so the TOKEN_LIFETIME clock restarts here. Deleting first
+        # also means a second device logging in invalidates the first
+        # device's token — one active session per account, which is the
+        # safer default for an internal call-center tool.
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
 
         role_key = employee.role.key
         operator_name = employee.name if role_key == 'call_operator' else None
@@ -323,6 +362,9 @@ class EmployeeDetailView(RoleRequiredAPIView):
             employee.user.save(update_fields=['email'])
         # TO HERE
 
+        log_audit(request, 'Edit employee', '—', employee.user.username,
+                  f'status={employee.status}, name={employee.name}')
+
         return Response(EmployeeSerializer(employee).data)
     
     def delete(self, request, employee_id):
@@ -471,6 +513,26 @@ class InquiryAttachmentView(RoleRequiredAPIView):
                 {'message': 'file is required'},
                 status=http_status.HTTP_400_BAD_REQUEST
             )
+
+        # Attachment uploads land in B2 and get served back through a URL, so
+        # an unvalidated upload is a durable file-hosting hole: reject by
+        # CONTENT (magic bytes), not by the client-supplied filename or MIME
+        # type, both of which are attacker-controlled.
+        if f.size > 10 * 1024 * 1024:
+            return Response({'message': 'File too large (max 10 MB).'}, status=http_status.HTTP_400_BAD_REQUEST)
+        head = f.read(4096); f.seek(0)
+        magic = (b'%PDF', b'\x89PNG', b'\xff\xd8\xff', b'GIF8', b'PK\x03\x04', b'\xd0\xcf\x11\xe0')
+        ok = head.startswith(magic)
+        if not ok and f.name.lower().endswith(('.txt', '.csv')):
+            # Text/CSV have no magic number, so the only signal available is
+            # whether the head decodes as UTF-8.
+            try:
+                head.decode('utf-8'); ok = True
+            except UnicodeDecodeError:
+                pass
+        if not ok:
+            return Response({'message': 'Unsupported file type. Use PDF, image, Office, or text/CSV.'},
+                            status=http_status.HTTP_400_BAD_REQUEST)
 
         att = InquiryAttachment.objects.create(
             inquiry=inquiry,
@@ -689,6 +751,49 @@ class VisitSetupDetailView(RoleRequiredAPIView):
         return Response(status=http_status.HTTP_204_NO_CONTENT)
 
 
+class SavedLocationView(RoleRequiredAPIView):
+    """
+    GET  /api/locations  — every saved address + maps link, for the
+                            "pick a location" dropdown.
+    POST /api/locations  — { address, mapsLink }; upserts on the
+                            normalized address so re-saving the same
+                            place with a corrected link replaces it
+                            instead of adding a near-duplicate.
+    """
+    method_roles = {
+        'GET': ROLES_ANY_AUTHENTICATED_USER,
+        'POST': ('administrator', 'call_operator', 'auction_manager'),
+    }
+
+    def get(self, request):
+        return Response(list(SavedLocation.objects.order_by('address').values('address', 'mapsLink')))
+
+    def post(self, request):
+        address = ' '.join(str(request.data.get('address', '')).split())
+        link = str(request.data.get('mapsLink', '')).strip()
+        if not address or not link:
+            return Response({'message': 'address and mapsLink are required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+        try:
+            URLValidator()(link)
+        except DjangoValidationError:
+            return Response({'message': 'mapsLink must be a valid URL.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        key = address_key(address)
+        existing = SavedLocation.objects.filter(addressKey=key).first()
+        # Re-saving identical data is a no-op with no audit row — otherwise
+        # picking the same address off a dropdown every time would bury the
+        # real changes in the audit log.
+        if existing and existing.mapsLink == link:
+            return Response({'address': existing.address, 'mapsLink': existing.mapsLink})
+        obj, created = SavedLocation.objects.update_or_create(
+            addressKey=key,
+            defaults={'address': address, 'mapsLink': link, 'updatedBy': request.user},
+        )
+        log_audit(request, 'Save location', existing.mapsLink if existing else '—', link, address)
+        return Response({'address': obj.address, 'mapsLink': obj.mapsLink},
+                        status=http_status.HTTP_201_CREATED if created else http_status.HTTP_200_OK)
+
+
 # =============================================================================
 # Appointments / Visitations  (§4)
 # =============================================================================
@@ -702,7 +807,11 @@ class AppointmentListCreateView(RoleRequiredAPIView):
     required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
-        qs = Appointment.objects.all().order_by('visitDate')
+        # Newest first, not by visitDate: visitDate is nullable now (and
+        # sort last for a setup-backed visit anyway, since the real dates
+        # live on the setup's range), so createdAt is the only ordering that
+        # is always populated and matches "what did we just book".
+        qs = Appointment.objects.all().order_by('-createdAt')
 
         status_param = request.query_params.get('status')
         auction = request.query_params.get('auction')
@@ -720,7 +829,7 @@ class AppointmentListCreateView(RoleRequiredAPIView):
         appointment = serializer.save(_creating_employee=_employee_for(request.user))
         log_audit(
             request, 'Register visitor', '—', f'{appointment.publicId} created',
-            f'{appointment.visitorName} · {appointment.company} · {appointment.batch}',
+            f'{appointment.visitorName or appointment.phone} · {appointment.company} · {appointment.batch}',
         )
         return Response(AppointmentSerializer(appointment).data, status=http_status.HTTP_201_CREATED)
 
@@ -735,16 +844,14 @@ class AppointmentDetailView(RoleRequiredAPIView):
         except Appointment.DoesNotExist:
             return Response({'message': 'Appointment not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
-        prev_status = appointment.status
         serializer = AppointmentSerializer(appointment, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         updated = serializer.save()
 
-        if prev_status != updated.status:
-            log_audit(
-                request, 'Update visitation status', prev_status, updated.status,
-                f'{updated.publicId} · {updated.visitorName}',
-            )
+        # Was previously gated on a status change, which meant every OTHER
+        # edit to an appointment (address, maps link, date, setup) left no
+        # trace at all. Auditing every patch is the point of the trail.
+        log_audit(request, 'Edit visitation', '—', updated.publicId, updated.visitorName or updated.phone)
 
         return Response(AppointmentSerializer(updated).data)
     
@@ -768,13 +875,14 @@ class AppointmentSendConfirmationView(RoleRequiredAPIView):
     except viewer (viewers can't edit appointments at all, so they
     shouldn't be able to trigger outbound SMS either).
 
-    Creates a fresh PartyVerification (invalidating any previous one for
-    this appointment — see create_verification()'s docstring), sends the
-    visitor SMS unconditionally, and the guide SMS only if a guide phone
-    is on file. Every attempt is logged to NotificationLog regardless of
-    success/failure (see verification.send_and_log), and one AuditLog
-    entry is written summarizing the outcome, matching how every other
-    state-changing view in this file logs to AuditLog.
+    Custom (isCustom) visits get a single SMS containing just the address
+    and maps link — no PartyVerification is created, since there's no guide
+    to verify against and no QR pass to hand out. Every other visit creates
+    a fresh PartyVerification (invalidating any previous one — see
+    create_verification()'s docstring) and sends the visitor SMS
+    unconditionally plus the guide SMS only if a guide phone is on file.
+    Every attempt is logged to NotificationLog regardless of
+    success/failure, and one AuditLog entry is written per send.
     """
     required_roles = ('administrator', 'call_operator', 'auction_manager')
 
@@ -783,24 +891,11 @@ class AppointmentSendConfirmationView(RoleRequiredAPIView):
             appointment = Appointment.objects.get(publicId=appointment_id)
         except Appointment.DoesNotExist:
             return Response({'message': 'Appointment not found.'}, status=http_status.HTTP_404_NOT_FOUND)
-
-        verification = create_verification('visitation', appointment.publicId)
-        visitor_message, guide_message = build_visitation_messages(appointment, verification)
-
-        visitor_log = send_and_log('visitation', appointment.publicId, 'visitor', appointment.phone, visitor_message)
-
-        guide_log = None
-        if appointment.guidePhone:
-            guide_log = send_and_log('visitation', appointment.publicId, 'guide', appointment.guidePhone, guide_message)
-
-        summary = f'{appointment.visitorName} · visitor {visitor_log.status}'
-        summary += f', guide {guide_log.status}' if guide_log else ', no guide phone on file — guide SMS skipped'
-        log_audit(request, 'Send visitation confirmation', '—', appointment.publicId, summary)
-
+        v, g = _send_one_appointment(request, appointment)
         return Response({
             'message': 'Confirmation sent.',
-            'visitor': {'status': visitor_log.status, 'detail': visitor_log.providerResponse},
-            'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
+            'visitor': {'status': v.status, 'detail': v.providerResponse},
+            'guide': {'status': g.status, 'detail': g.providerResponse} if g else None,
         })
 
 
@@ -817,13 +912,13 @@ class AppointmentPreviewConfirmationView(RoleRequiredAPIView):
             appointment = Appointment.objects.get(publicId=appointment_id)
         except Appointment.DoesNotExist:
             return Response({'message': 'Appointment not found.'}, status=http_status.HTTP_404_NOT_FOUND)
-
+        if appointment.isCustom:
+            return Response({'id': appointment.publicId,
+                             'visitorMessage': build_custom_visit_message(appointment),
+                             'guideMessage': None})
         visitor_message, guide_message = build_visitation_preview(appointment)
-        return Response({
-            'id': appointment.publicId,
-            'visitorMessage': visitor_message,
-            'guideMessage': guide_message if appointment.guidePhone else None,
-        })
+        return Response({'id': appointment.publicId, 'visitorMessage': visitor_message,
+                         'guideMessage': guide_message if appointment.guidePhone else None})
 
 
 class AppointmentBulkSendConfirmationView(RoleRequiredAPIView):
@@ -846,24 +941,11 @@ class AppointmentBulkSendConfirmationView(RoleRequiredAPIView):
             except Appointment.DoesNotExist:
                 results.append({'id': appointment_id, 'message': 'Appointment not found.', 'ok': False})
                 continue
-
-            verification = create_verification('visitation', appointment.publicId)
-            visitor_message, guide_message = build_visitation_messages(appointment, verification)
-
-            visitor_log = send_and_log('visitation', appointment.publicId, 'visitor', appointment.phone, visitor_message)
-            guide_log = None
-            if appointment.guidePhone:
-                guide_log = send_and_log('visitation', appointment.publicId, 'guide', appointment.guidePhone, guide_message)
-
-            summary = f'{appointment.visitorName} · visitor {visitor_log.status}'
-            summary += f', guide {guide_log.status}' if guide_log else ', no guide phone on file — guide SMS skipped'
-            log_audit(request, 'Send visitation confirmation', '—', appointment.publicId, summary)
-
+            v, g = _send_one_appointment(request, appointment)
             results.append({
-                'id': appointment.publicId,
-                'ok': visitor_log.status == 'sent',
-                'visitor': {'status': visitor_log.status, 'detail': visitor_log.providerResponse},
-                'guide': {'status': guide_log.status, 'detail': guide_log.providerResponse} if guide_log else None,
+                'id': appointment.publicId, 'ok': v.status == 'sent', 'isCustom': appointment.isCustom,
+                'visitor': {'status': v.status, 'detail': v.providerResponse},
+                'guide': {'status': g.status, 'detail': g.providerResponse} if g else None,
             })
 
         return Response({'results': results})
@@ -1062,7 +1144,7 @@ class ComplaintDetailView(RoleRequiredAPIView):
                     send_push_to_user(
                         linked_inquiry.operator.user,
                         title=f"Complaint resolved — {updated.publicId}",
-                        body=f'{updated.callerName}\'s complaint ({updated.category}) was resolved.',
+                        body=f"{_who(updated.callerName)}'s complaint ({updated.category}) was resolved.",
                         url="/?page=complaints",
                     )
             except Inquiry.DoesNotExist:
@@ -1122,7 +1204,7 @@ class EscalationListCreateView(RoleRequiredAPIView):
             send_push_to_user(
                 manager,
                 title=f"New manager request from {escalation.operatorName}",
-                body=f'{escalation.inquiry.publicId} ({escalation.callerName}) — "{escalation.note[:80]}"',
+                body=f'{escalation.inquiry.publicId} ({_who(escalation.callerName)}) — "{escalation.note[:80]}"',
                 url="/?page=escalations",
             )
 
@@ -1160,7 +1242,7 @@ class EscalationResolveView(RoleRequiredAPIView):
             send_push_to_user(
                 updated.createdBy,
                 title=f"Manager request resolved — {updated.publicId}",
-                body=f'The Auction Manager resolved your request on {updated.inquiry.publicId} ({updated.callerName}): "{(updated.resolutionNote or "")[:80]}"',
+                body=f'The Auction Manager resolved your request on {updated.inquiry.publicId} ({_who(updated.callerName)}): "{(updated.resolutionNote or "")[:80]}"',
                 url="/?page=inquiries",
             )
 
@@ -1224,7 +1306,10 @@ class GoogleLoginView(RoleRequiredAPIView):
         user = serializer.validated_data['user']
         employee = serializer.validated_data['employee']
 
-        token, _ = Token.objects.get_or_create(user=user)
+        # Same as LoginView — see the note there on why login always
+        # replaces the stored token rather than reusing it.
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
 
         role_key = employee.role.key
         operator_name = employee.name if role_key == 'call_operator' else None
@@ -1276,8 +1361,13 @@ class TriggerFollowupRemindersView(RoleRequiredAPIView):
     required_roles = ROLES_PUBLIC
 
     def post(self, request):
-        secret = request.headers.get('X-Cron-Secret')
-        if secret != os.environ.get('CRON_SECRET'):
+        expected = os.environ.get('CRON_SECRET', '')
+        secret = request.headers.get('X-Cron-Secret', '')
+        # hmac.compare_digest instead of `!=` so response timing doesn't
+        # leak how much of the secret guesser got right. The empty check
+        # first matters most: if CRON_SECRET is unset, `'' != ''` would
+        # otherwise pass and leave the endpoint wide open.
+        if not expected or not hmac.compare_digest(secret, expected):
             return Response({'message': 'Forbidden.'}, status=http_status.HTTP_403_FORBIDDEN)
 
         from django.core.management import call_command
@@ -1338,3 +1428,163 @@ class PassVerifyView(RoleRequiredAPIView):
             ipAddress=request.META.get('REMOTE_ADDR'),
         )
         return Response(result)
+
+
+class HealthView(RoleRequiredAPIView):
+    """
+    GET /api/health/ — PUBLIC. Unauthenticated liveness probe for the
+    Render service / uptime monitor. Deliberately does no DB query: the
+    point is to prove the web process booted and can route a request,
+    and a readiness check that touches the database would take the whole
+    service out of rotation during a brief DB blip. throttle_classes = []
+    so a monitor polling every 30s never spends the anon budget that
+    login attempts depend on.
+    """
+    required_roles = ROLES_PUBLIC
+    throttle_classes = []
+
+    def get(self, request):
+        return Response({'status': 'ok'})
+
+
+# =============================================================================
+# PFM winner import
+# =============================================================================
+# Winners are fetched from PFM into the PfmWinner staging table, NOT straight
+# into Pickups: PFM knows who won and what they paid, but not when or where
+# they will collect their item or who guides them, so an operator schedules
+# each winner separately (PfmSchedulePickupView below).
+
+PFM_ROLES = ('administrator', 'auction_manager', 'call_operator')
+
+
+def _pfm_row_state(row):
+    """Returns (state, reason). state: new | duplicate | invalid."""
+    if not row['invoiceNumber']:
+        return 'invalid', 'Missing invoice number.'
+    if not row['bidderName'] and not row['companyName']:
+        return 'invalid', 'No bidder or company name.'
+    try:
+        row['phone'] = validate_ethiopian_phone(row['phone'])
+    except drf_serializers.ValidationError:
+        return 'invalid', 'Invalid phone number.'
+    if PfmWinner.objects.filter(invoiceNumber=row['invoiceNumber']).exists():
+        return 'duplicate', 'Already imported.'
+    return 'new', ''
+
+
+def _pfm_public(row, state, reason):
+    return {**{k: row[k] for k in ('invoiceNumber', 'bidderName', 'companyName', 'phone', 'auction', 'lotsSummary')},
+            'amountPaid': str(row['amountPaid']) if row['amountPaid'] is not None else '',
+            'verifiedAt': row['verifiedAt'].isoformat() if row['verifiedAt'] else '',
+            'state': state, 'reason': reason}
+
+
+class PfmPreviewView(RoleRequiredAPIView):
+    """POST {since?} — fetches from PFM, changes nothing."""
+    required_roles = PFM_ROLES
+
+    def post(self, request):
+        ok, result = fetch_verified_winners(str(request.data.get('since', '')).strip())
+        if not ok:
+            return Response({'message': result}, status=http_status.HTTP_502_BAD_GATEWAY)
+        out = []
+        for row in result:
+            state, reason = _pfm_row_state(row)
+            out.append(_pfm_public(row, state, reason))
+        return Response({'rows': out})
+
+
+class PfmImportView(RoleRequiredAPIView):
+    """
+    POST {invoiceNumbers:[...], since?} — re-fetches from PFM and imports only
+    the invoice numbers the operator selected.
+
+    The client sends invoice NUMBERS only, never row data, and this view
+    re-fetches from PFM to resolve them. That's the whole point: a browser
+    that could post winner rows directly would be able to invent a winner and
+    get a real Pickup created from it.
+    """
+    required_roles = PFM_ROLES
+
+    def post(self, request):
+        wanted = request.data.get('invoiceNumbers', [])
+        if not isinstance(wanted, list) or not wanted:
+            return Response({'message': 'invoiceNumbers must be a non-empty list.'}, status=http_status.HTTP_400_BAD_REQUEST)
+        ok, result = fetch_verified_winners(str(request.data.get('since', '')).strip())
+        if not ok:
+            return Response({'message': result}, status=http_status.HTTP_502_BAD_GATEWAY)
+        wanted = set(wanted)
+        imported, skipped = [], []
+        for row in result:
+            if row['invoiceNumber'] not in wanted:
+                continue
+            state, reason = _pfm_row_state(row)
+            if state != 'new':
+                skipped.append({'invoiceNumber': row['invoiceNumber'], 'reason': reason})
+                continue
+            PfmWinner.objects.get_or_create(
+                invoiceNumber=row['invoiceNumber'],
+                defaults={**{k: row[k] for k in ('bidderName', 'bidderNameAmharic', 'companyName', 'phone',
+                                                 'email', 'auction', 'lots', 'lotsSummary', 'amountPaid', 'verifiedAt')},
+                          'importedBy': request.user})
+            imported.append(row['invoiceNumber'])
+        if imported:
+            log_audit(request, 'Import PFM winners', '—', f'{len(imported)} imported', ', '.join(imported)[:500])
+        return Response({'imported': imported, 'skipped': skipped})
+
+
+def _winner_json(w):
+    return {'id': w.id, 'invoiceNumber': w.invoiceNumber, 'bidderName': w.bidderName, 'companyName': w.companyName,
+            'phone': w.phone, 'auction': w.auction, 'lotsSummary': w.lotsSummary,
+            'amountPaid': str(w.amountPaid) if w.amountPaid is not None else '',
+            'verifiedAt': w.verifiedAt.isoformat() if w.verifiedAt else '',
+            'status': w.status, 'pickupId': w.pickup.publicId if w.pickup else ''}
+
+
+class PfmWinnerListView(RoleRequiredAPIView):
+    required_roles = ROLES_ANY_AUTHENTICATED_USER
+
+    def get(self, request):
+        return Response([_winner_json(w) for w in PfmWinner.objects.select_related('pickup')])
+
+
+class PfmWinnerSkipView(RoleRequiredAPIView):
+    """POST — toggles New <-> Skipped. A scheduled winner can't be skipped."""
+    required_roles = PFM_ROLES
+
+    def post(self, request, winner_id):
+        w = get_object_or_404(PfmWinner, id=winner_id)
+        if w.status == 'Scheduled':
+            return Response({'message': 'Already scheduled as a pickup.'}, status=http_status.HTTP_400_BAD_REQUEST)
+        prev, w.status = w.status, 'Skipped' if w.status != 'Skipped' else 'New'
+        w.save(update_fields=['status'])
+        log_audit(request, 'PFM winner status', prev, w.status, w.invoiceNumber)
+        return Response(_winner_json(w))
+
+
+class PfmSchedulePickupView(RoleRequiredAPIView):
+    """POST {pickupDate, pickupTime, guideName?, guidePhone?, address?, mapsLink?, quantity?}"""
+    required_roles = PFM_ROLES
+
+    def post(self, request, winner_id):
+        w = get_object_or_404(PfmWinner, id=winner_id)
+        if w.pickup_id:
+            return Response({'message': 'A pickup is already scheduled for this winner.'}, status=http_status.HTTP_400_BAD_REQUEST)
+        d = request.data
+        data = {
+            'winnerName': w.bidderName or w.companyName, 'phone': w.phone, 'auction': w.auction,
+            'itemDescription': w.lotsSummary, 'paymentReference': w.invoiceNumber,
+            'quantity': d.get('quantity', ''), 'pickupDate': d.get('pickupDate'), 'pickupTime': d.get('pickupTime'),
+            'guideName': d.get('guideName', ''), 'guidePhone': d.get('guidePhone', ''),
+            'address': d.get('address', ''), 'mapsLink': d.get('mapsLink', ''),
+        }
+        ser = PickupSerializer(data=data, context={'request': request})
+        ser.is_valid(raise_exception=True)
+        pickup = ser.save()
+        w.pickup, w.status = pickup, 'Scheduled'
+        w.save(update_fields=['pickup', 'status'])
+        log_audit(request, 'Schedule pickup from PFM', w.invoiceNumber, pickup.publicId, pickup.winnerName)
+        return Response({'winner': _winner_json(w), 'pickup': PickupSerializer(pickup).data},
+                        status=http_status.HTTP_201_CREATED)
+

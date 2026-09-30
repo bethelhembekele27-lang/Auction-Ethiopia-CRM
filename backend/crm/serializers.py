@@ -14,7 +14,8 @@ from django.utils.dateparse import parse_date
 from .models import (
     Inquiry,InquiryAttachment ,Employee, CATEGORIES, PRIORITIES, INQUIRY_STATUSES,
     Followup, FOLLOWUP_SETTABLE_STATUSES,VisitSetup, DAYS_OF_WEEK,Appointment, Followup,Role,Complaint, COMPLAINT_CATEGORIES, DEPARTMENTS, COMPLAINT_STATUSES,Escalation,
-    AuditLog,PushSubscription,Pickup, PICKUP_STATUSES )
+    AuditLog,PushSubscription,Pickup, PICKUP_STATUSES, SavedLocation )
+from .visit_rules import followup_date_for_setup, appointment_window
 import re
 
 ET_PHONE_RE = re.compile(r'^(?:\+251|0)(9|7)\d{8}$')
@@ -508,10 +509,22 @@ class VisitSetupSerializer(serializers.ModelSerializer):
     class Meta:
         model = VisitSetup
         fields = [
-            'id', 'company', 'batch', 'dateFrom', 'dateTo', 'address', 'items',
+            'id', 'company', 'batch', 'dateFrom', 'dateTo', 'address', 'mapsLink', 'items',
             'guideName', 'guidePhone', 'guideTimeFrom', 'guideTimeTo',
             'createdBy', 'createdDate',
         ]
+
+    def update(self, instance, validated_data):
+        # Moving the date range invalidates the follow-ups auto-created from
+        # this setup's appointments — they were dated off the old range. Only
+        # still-Pending ones are re-dated; a resolved follow-up's date is
+        # history and must not silently move under it.
+        old = (instance.dateFrom, instance.dateTo)
+        instance = super().update(instance, validated_data)
+        if (instance.dateFrom, instance.dateTo) != old:
+            Followup.objects.filter(appointment__setup=instance, status='Pending') \
+                .update(date=followup_date_for_setup(instance))
+        return instance
 
     def create(self, validated_data):
         request = self.context.get('request')
@@ -661,16 +674,24 @@ class AppointmentSerializer(serializers.ModelSerializer):
       login (see guideName), so this field never validates against
       Employee and never silently drops input the way an FK lookup would.
     - `setupId` <-> VisitSetup FK, "" if not booked against one.
+    - `isCustom` marks an ID-only visit (address + maps link, no setup,
+      no guide, no QR pass, no auto follow-up).
+    - `visitWindow` is derived, never client-supplied: a setup-backed visit
+      spans the setup's whole date range + daily time window, so the
+      visitor needs the range in the SMS and on the pass page, not a
+      single date (see crm/visit_rules.py).
     - visitTime: TimeField formatted as plain "HH:MM" to match the
       frontend's <input type="time">, same as VisitSetup's guide times.
     - Auto-follow-up creation (spec §4) happens in create() below, NOT
-      via a client-suppliable flag — every appointment created through
-      this endpoint gets one, no opt-out.
+      via a client-suppliable flag — every non-custom appointment created
+      through this endpoint gets one, no opt-out.
     """
     id = serializers.CharField(source='publicId', read_only=True)
     setupId = serializers.CharField(required=False, allow_blank=True)
-    visitTime = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'])
+    visitTime = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'], required=False, allow_null=True)
     verificationStatus = serializers.SerializerMethodField()
+    visitWindow = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Appointment
@@ -678,18 +699,37 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'id', 'auction', 'visitorName', 'phone', 'company',
             'visitDate', 'visitTime', 'assignedStaff', 'status', 'notes',
             'setupId', 'batch', 'guideName', 'guidePhone', 'address', 'items',
-            'quantity', 'mapsLink', 'verificationStatus',
+            'quantity', 'mapsLink', 'isCustom', 'verificationStatus',
+            'visitWindow', 'createdAt',
         ]
 
     def get_verificationStatus(self, obj):
+        if obj.isCustom:
+            return 'No pass'
         return _verification_status('visitation', obj.publicId)
+
+    def get_visitWindow(self, obj):
+        return appointment_window(obj)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data['setupId'] = instance.setup.publicId if instance.setup else ''
         return data
+
     def validate_phone(self, value):
-     return validate_ethiopian_phone(value)
+        return validate_ethiopian_phone(value)
+
+    def validate(self, data):
+        # A custom visit has no setup to inherit an address/link from, so
+        # both have to be supplied — otherwise the visitor gets an SMS with
+        # no way to find the place. Partial-update aware via getattr().
+        inst = self.instance
+        if data.get('isCustom', getattr(inst, 'isCustom', False)):
+            if not (data.get('address', getattr(inst, 'address', '')) or '').strip():
+                raise serializers.ValidationError({'address': 'Place name / address is required for a custom visit.'})
+            if not (data.get('mapsLink', getattr(inst, 'mapsLink', '')) or '').strip():
+                raise serializers.ValidationError({'mapsLink': 'Google Maps link is required for a custom visit.'})
+        return data
 
     def _resolve_setup(self, setup_id):
         if not setup_id:
@@ -703,37 +743,58 @@ class AppointmentSerializer(serializers.ModelSerializer):
         setup_id = validated_data.pop('setupId', '')
         creating_employee = validated_data.pop('_creating_employee', None)
 
-        validated_data['setup'] = self._resolve_setup(setup_id)
+        # Custom (ID-only) visit: no setup, no guide, no verification, no
+        # follow-up. Blanks everything the setup would otherwise have
+        # supplied, so a client can't smuggle a stale guide/company onto a
+        # visit that isn't tied to a setup.
+        if validated_data.get('isCustom'):
+            validated_data.update(setup=None, batch='', guideName='', guidePhone='',
+                                  items='', assignedStaff='', company='', auction='')
+            return Appointment.objects.create(**validated_data)
+
+        setup = self._resolve_setup(setup_id)
+        validated_data['setup'] = setup
+        if setup:
+            if not validated_data.get('mapsLink'):
+                validated_data['mapsLink'] = setup.mapsLink
+            if not validated_data.get('address'):
+                validated_data['address'] = setup.address
 
         appointment = Appointment.objects.create(**validated_data)
 
-        # --- spec §4: auto-create the linked day-after follow-up ---
-        next_day = appointment.visitDate + timezone.timedelta(days=1)
-        batch_or_auction = appointment.batch or appointment.auction or '—'
+        # --- spec §4: auto-create the linked follow-up ---
+        # Dated from the setup's range (3 days before it closes), NOT
+        # visitDate+1: with a multi-day window the old rule either fired
+        # before the visit even started or never fired at all, since
+        # visitDate is now nullable for setup-backed visits.
+        who = appointment.visitorName or appointment.phone
+        what = appointment.batch or appointment.auction or '—'
         Followup.objects.create(
             inquiry=None,
-            callerName=appointment.visitorName,
-            date=next_day,
+            appointment=appointment,
+            callerName=who,
+            date=followup_date_for_setup(setup),
             reminder=True,
             assignedOperator=creating_employee,
             status='Pending',
-            notes=(
-                f"Follow up after the visit — ask {appointment.visitorName} "
-                f"what they thought of the items ({batch_or_auction})."
-            ),
+            notes=(f"The visit window ends soon — follow up with {who} "
+                   f"about what they thought of the items ({what})."),
             company=appointment.company,
             batch=appointment.batch,
             guideName=appointment.guideName or appointment.assignedStaff,
         )
-
         return appointment
 
     def update(self, instance, validated_data):
-        if 'setupId' in validated_data:
+        validated_data.pop('_creating_employee', None)
+        if 'setupId' in validated_data and not instance.isCustom:
             instance.setup = self._resolve_setup(validated_data.pop('setupId'))
-
+        else:
+            validated_data.pop('setupId', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        if instance.setup and not instance.mapsLink:
+            instance.mapsLink = instance.setup.mapsLink
         instance.save()
         return instance
     
@@ -875,7 +936,10 @@ class EscalationSerializer(serializers.ModelSerializer):
 
         return Escalation.objects.create(
             inquiry=inquiry,
-            callerName=validated_data['callerName'],
+            # Falls back to the inquiry's own name when the escalation
+            # doesn't carry one — callerName is optional app-wide now, so
+            # indexing validated_data['callerName'] would KeyError.
+            callerName=validated_data.get('callerName') or inquiry.callerName,
             operatorName=validated_data['operatorName'],
             createdBy=creating_user,
             note=validated_data['note'],

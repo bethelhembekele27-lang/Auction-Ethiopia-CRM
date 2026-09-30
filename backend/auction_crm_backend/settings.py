@@ -128,10 +128,32 @@ REST_FRAMEWORK = {
         "anon": "30/minute",
         # Tighter scopes for brute-force-sensitive endpoints — see
         # crm/throttles.py for why these two specifically.
-        "login": "10/minute",
+        # Login is per-hour rather than per-minute on purpose: a whole
+        # call center shares one office IP, so a tight per-minute rate
+        # locks out every employee as soon as the morning shift all logs
+        # in together. An hour-wide budget still stops online brute
+        # force while leaving shared-IP bursts alone.
+        "login": "30/hour",
         "pass_verify": "10/minute",
     },
 }
+
+# --- Security headers ---
+# X_FRAME_OPTIONS/NOSNIFF apply in both modes since neither breaks local
+# dev; the cookie/HSTS ones are HTTPS-only because they would break
+# http://localhost sessions during development.
+X_FRAME_OPTIONS = "DENY"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    # Render terminates TLS at its proxy and forwards the original scheme
+    # in X-Forwarded-Proto — without this, Django thinks every request is
+    # plain HTTP and secure-cookie/HSTS logic never engages.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'

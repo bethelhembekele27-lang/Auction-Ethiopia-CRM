@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { CATEGORIES, PRIORITIES, STATUSES, COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
-import { todayISO, fmtDate } from "../utils/format";
+import { todayISO, fmtDate, displayName } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
@@ -138,7 +138,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       if (fOperator !== "All" && i.operator !== fOperator) return false;
       if (query) {
         const q = query.toLowerCase();
-        if (!(i.callerName.toLowerCase().includes(q) || i.phone.includes(q) || i.company.toLowerCase().includes(q) || i.id.toLowerCase().includes(q))) return false;
+        if (!((i.callerName || "").toLowerCase().includes(q) || i.phone.includes(q) || (i.company || "").toLowerCase().includes(q) || i.id.toLowerCase().includes(q))) return false;
       }
       return true;
     }).sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime));
@@ -162,7 +162,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       try {
         await Promise.all(rows.map((i) => inquiriesApi.deleteInquiry(i.id)));
         setInquiries((prev) => prev.filter((i) => !rows.some((r) => r.id === i.id)));
-        rows.forEach((i) => addAudit("Delete inquiry", `${i.id} · ${i.callerName}`, "—", "Permanently removed"));
+        rows.forEach((i) => addAudit("Delete inquiry", `${i.id} · ${displayName(i.callerName)}`, "—", "Permanently removed"));
         sel.clear();
       } catch (err) {
         setSaveError(err.body?.message || "Couldn't delete one or more inquiries — try again.");
@@ -225,7 +225,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   }
   function openEditSelected() { if (soleSelected) openEdit(soleSelected); }
   async function save() {
-    if (!draft.callerName || !draft.phone) return;
+      if (!draft.phone) return;
     if (!isValidEthiopianPhone(draft.phone)) {
       setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
       return;
@@ -317,12 +317,13 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     if (!s) { setApptDraft((d) => ({ ...d, setupId: "" })); return; }
     setApptDraft((d) => ({
       ...d, setupId: s.id, company: s.company, batch: s.batch,
-      guideName: s.guideName, guidePhone: s.guidePhone, address: s.address, items: s.items,
+      guideName: s.guideName, guidePhone: s.guidePhone, address: s.address, mapsLink: s.mapsLink || "", items: s.items,
       assignedStaff: s.guideName,
     }));
   }
   async function saveVisitation() {
-    if (!apptDraft.visitorName || !apptDraft.phone || !apptDraft.visitDate) return;
+    if (!apptDraft.visitorName || !apptDraft.phone) return;
+    if (!apptDraft.setupId) { setApptError("Pick a visit setup first."); return; }
     if (!isValidEthiopianPhone(apptDraft.phone)) {
       setApptError(`Phone number isn't valid. ${PHONE_HINT}`);
       return;
@@ -360,7 +361,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   }
   function openComplaintSelected() { if (soleSelected) openComplaintFor(soleSelected); }
   async function saveComplaint() {
-    if (!cmpDraft.callerName || !cmpDraft.description) return;
+      if (!cmpDraft.description) return;
     if (!isValidEthiopianPhone(cmpDraft.phone)) {
       setCmpError(`Phone number isn't valid. ${PHONE_HINT}`);
       return;
@@ -442,7 +443,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
                   <tr key={i.id} className="group">
                     {canEdit && <RowCheckbox checked={sel.isSelected(i)} onChange={() => sel.toggle(i)} label={`Select ${i.id}`} />}
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{i.id}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.callerName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.phone}{i.company ? ` · ${i.company}` : ""}</div></td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.callerName || "Unknown caller"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.phone}{i.company ? ` · ${i.company}` : ""}</div></td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.category}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.auction}{i.batch ? ` · ${i.batch}` : ""}</div></td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={i.priority} kind={PRIORITY_STAMP[i.priority]} /></td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.operator}</td>
@@ -458,7 +459,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "New inquiry"} wide>
         <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
-          <Field label="Caller name"><input className={inputCls} value={draft.callerName} onChange={(e) => setDraft({ ...draft, callerName: e.target.value })} /></Field>
+          <Field label="Caller name (optional)"><input className={inputCls} value={draft.callerName} onChange={(e) => setDraft({ ...draft, callerName: e.target.value })} /></Field>
           <Field label="Phone number">
             <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
           </Field>
@@ -568,8 +569,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
               <Field label="Phone number">
                 <AutoCompleteField value={apptDraft.phone} onChange={(v) => setApptDraft({ ...apptDraft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
               </Field>
-              <Field label="Visit date"><input type="date" className={inputCls} value={apptDraft.visitDate} onChange={(e) => setApptDraft({ ...apptDraft, visitDate: e.target.value })} /></Field>
-              <Field label="Visit time"><input type="time" className={inputCls} value={apptDraft.visitTime} onChange={(e) => setApptDraft({ ...apptDraft, visitTime: e.target.value })} /></Field>
               <Field label="Quantity (optional)"><input className={inputCls} placeholder="e.g. 1, or 3 lots" value={apptDraft.quantity} onChange={(e) => setApptDraft({ ...apptDraft, quantity: e.target.value })} /></Field>
               <Field label="Notes" full><textarea className={inputCls} rows={2} value={apptDraft.notes} onChange={(e) => setApptDraft({ ...apptDraft, notes: e.target.value })} /></Field>
             </div>
@@ -588,7 +587,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           <>
             <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
               <Field label="Related inquiry ID (optional)"><input className={inputCls} value={cmpDraft.inquiryId} onChange={(e) => setCmpDraft({ ...cmpDraft, inquiryId: e.target.value })} /></Field>
-              <Field label="Caller name"><input className={inputCls} value={cmpDraft.callerName} onChange={(e) => setCmpDraft({ ...cmpDraft, callerName: e.target.value })} /></Field>
+              <Field label="Caller name (optional)"><input className={inputCls} value={cmpDraft.callerName} onChange={(e) => setCmpDraft({ ...cmpDraft, callerName: e.target.value })} /></Field>
               <Field label="Phone number">
                 <AutoCompleteField value={cmpDraft.phone} onChange={(v) => setCmpDraft({ ...cmpDraft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
               </Field>

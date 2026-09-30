@@ -5,8 +5,10 @@
 export const GENERAL_AUCTION_LABEL = "General — not about a specific auction (Auction Ethiopia)";
 
 
+// "CPO" is first on purpose: emptyInquiry defaults to CATEGORIES[0], and a
+// phone-inquiry from the public number is now the most common case.
 export const CATEGORIES = [
-  "Auction Information", "Registration Support", "Bidder Registration", "Bid Submission",
+  "CPO", "Auction Information", "Registration Support", "Bidder Registration", "Bid Submission",
   "Processing Fee Inquiry", "Payment Inquiry", "Visitation Appointment", "Technical Support",
   "Complaint", "General Inquiry", "Other",
 ];
@@ -30,6 +32,9 @@ export const APPT_STAMP = {
 
 export const VERIFICATION_STAMP = {
   "Not sent": "gray",
+  // Custom (ID-only) visits have no QR pass at all, so they can never reach
+  // any verification state.
+  "No pass": "gray",
   "Sent, not verified": "amber",
   "Guide verified": "blue",
   "Visitor verified": "blue",
@@ -41,3 +46,7 @@ export const VERIFICATION_STAMP = {
 // records what actually happened — only these three outcomes are choosable.
 export const FOLLOWUP_STATUSES = ["Satisfied", "Not Satisfied", "No Show"];
 export const FOLLOWUP_STAMP = { Pending: "amber", Satisfied: "green", "Not Satisfied": "red", "No Show": "red" };
+
+// PFM winner staging: New = imported but nobody has acted on it yet,
+// Scheduled = a Pickup was created from it, Skipped = deliberately ignored.
+export const PFM_STAMP = { New: "blue", Scheduled: "green", Skipped: "gray" };

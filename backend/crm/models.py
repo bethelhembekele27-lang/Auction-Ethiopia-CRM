@@ -11,6 +11,7 @@ import uuid
 # =============================================================================
 
 CATEGORIES = [
+    "CPO",
     "Auction Information", "Registration Support", "Bidder Registration",
     "Bid Submission", "Processing Fee Inquiry", "Payment Inquiry",
     "Visitation Appointment", "Technical Support", "Complaint",
@@ -96,6 +97,17 @@ def next_public_id(model_cls, prefix, pad=4):
 
     return f"{prefix}-{next_number:0{pad}d}"
 
+
+def address_key(s):
+    """
+    Normalized lookup key for an address: lowercased with runs of
+    whitespace collapsed to single spaces. Used by SavedLocation so
+    "  Bole   Rd " and "bole rd" resolve to the same saved location
+    instead of accumulating near-duplicate rows.
+    """
+    return ' '.join((s or '').lower().split())
+
+
 # =============================================================================
 # Roles & Employees  (§8)
 # =============================================================================
@@ -153,7 +165,9 @@ class Employee(models.Model):
 class Inquiry(models.Model):
     publicId = models.CharField(max_length=20, unique=True, editable=False)
 
-    callerName = models.CharField(max_length=150)
+    # Optional from Phase 2 onward: most callers are identified by phone
+    # number, and a withheld name shouldn't block logging the inquiry.
+    callerName = models.CharField(max_length=150, blank=True, default='')
     phone = models.CharField(max_length=20)
     company = models.CharField(max_length=200, blank=True, default='')
     auction = models.CharField(max_length=300, blank=True, default='')   # free text, not FK — see frontend note
@@ -213,10 +227,16 @@ class Followup(models.Model):
     publicId = models.CharField(max_length=20, unique=True, editable=False)
 
     inquiry = models.ForeignKey(Inquiry, on_delete=models.SET_NULL, null=True, blank=True, related_name='followups')
-    callerName = models.CharField(max_length=150)
+    callerName = models.CharField(max_length=150, blank=True, default='')
     date = models.DateField()
     reminder = models.BooleanField(default=True)
     assignedOperator = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name='followups')
+
+    # Set when this follow-up was auto-created for a visit appointment,
+    # as opposed to one tied to an inquiry (inquiry stays NULL for those).
+    # Lets the Follow-ups page show visit context, and lets a VisitSetup
+    # date-range edit re-date exactly the follow-ups it spawned.
+    appointment = models.ForeignKey('Appointment', on_delete=models.SET_NULL, null=True, blank=True, related_name='followups')
 
     status = models.CharField(max_length=15, choices=[(s, s) for s in FOLLOWUP_ALL_STATUSES], default='Pending')
     notes = models.TextField(blank=True, default='')
@@ -247,6 +267,7 @@ class VisitSetup(models.Model):
     dateFrom = models.CharField(max_length=100, blank=True, default='')
     dateTo = models.CharField(max_length=100, blank=True, default='')
     address = models.CharField(max_length=300, blank=True, default='')
+    mapsLink = models.URLField(max_length=500, blank=True, default='')
     items = models.TextField(blank=True, default='')
 
     guideName = models.CharField(max_length=150)
@@ -276,12 +297,18 @@ class Appointment(models.Model):
     publicId = models.CharField(max_length=20, unique=True, editable=False)
 
     auction = models.CharField(max_length=300, blank=True, default='')
-    visitorName = models.CharField(max_length=150)
+    # Blank is legitimate for a custom visit — the visitor identifies
+    # themselves by phone number and may decline to give a name.
+    visitorName = models.CharField(max_length=150, blank=True, default='')
     phone = models.CharField(max_length=20)
     company = models.CharField(max_length=200, blank=True, default='')
 
-    visitDate = models.DateField()
-    visitTime = models.TimeField()
+    # Both nullable: a visit booked against a VisitSetup takes its date and
+    # time from that setup's range/window (see crm/visit_rules.py), so these
+    # are only populated for legacy rows booked before that existed, or for
+    # a custom visit that supplied its own single date/time.
+    visitDate = models.DateField(null=True, blank=True)
+    visitTime = models.TimeField(null=True, blank=True)
     assignedStaff = models.CharField(max_length=150, blank=True, default='')
     status = models.CharField(max_length=15, choices=[(s, s) for s in APPT_STATUSES], default='Requested')
     notes = models.TextField(blank=True, default='')
@@ -301,8 +328,15 @@ class Appointment(models.Model):
     quantity = models.CharField(max_length=50, blank=True, default='')
     # Verification & Notification feature (visitation phase) — optional
     # Google Maps link shown alongside the free-text `address` on SMS
-    # confirmations and the visitor pass page.
-    mapsLink = models.URLField(blank=True, default='')
+    # confirmations and the visitor pass page. 500 chars because a pasted
+    # Google Maps share URL routinely runs past the 200-char default.
+    mapsLink = models.URLField(max_length=500, blank=True, default='')
+
+    # True for an ID-only visit with no VisitSetup behind it: no guide, no
+    # QR pass, no auto follow-up — just an address + maps link the visitor
+    # gets by SMS. Custom visits REQUIRE address and mapsLink (enforced in
+    # AppointmentSerializer.validate, since neither has a sensible default).
+    isCustom = models.BooleanField(default=False)
 
     createdAt = models.DateTimeField(auto_now_add=True)
 
@@ -332,7 +366,7 @@ class Complaint(models.Model):
     # string." Kept literally as a string per that note.
     inquiryId = models.CharField(max_length=20, blank=True, default='')
 
-    callerName = models.CharField(max_length=150)
+    callerName = models.CharField(max_length=150, blank=True, default='')
     phone = models.CharField(max_length=20)
     category = models.CharField(max_length=40, choices=[(c, c) for c in COMPLAINT_CATEGORIES])
     description = models.TextField()
@@ -369,7 +403,7 @@ class Escalation(models.Model):
     # inquiry's priority is Urgent" rule needs the actual record to check
     # against. Serializer outputs inquiry.publicId as the 'inquiryId' string.
     inquiry = models.ForeignKey(Inquiry, on_delete=models.CASCADE, related_name='escalations')
-    callerName = models.CharField(max_length=150)
+    callerName = models.CharField(max_length=150, blank=True, default='')
 
     operatorName = models.CharField(max_length=150)  # display name snapshot, like AuditLog.userRole
     createdBy = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='escalations_raised')
@@ -549,3 +583,62 @@ class NotificationLog(models.Model):
 
     def __str__(self):
         return f"NotificationLog({self.subjectType}:{self.subjectId} -> {self.recipientRole}, {self.status})"
+
+
+# =============================================================================
+# SavedLocation  — reusable address + Google Maps link pairs
+# =============================================================================
+# Visitation/pickup addresses are typed by hand every single time, and the
+# same handful of locations (warehouse, office) get re-typed with
+# inconsistent casing and spacing. addressKey holds the normalized form
+# (see address_key above) and is the unique column, so re-saving an
+# existing location updates its link rather than adding a duplicate.
+
+class SavedLocation(models.Model):
+    address = models.CharField(max_length=300)
+    addressKey = models.CharField(max_length=300, unique=True)
+    mapsLink = models.URLField(max_length=500)
+    updatedAt = models.DateTimeField(auto_now=True)
+    updatedBy = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return self.address
+
+
+# =============================================================================
+# PfmWinner  — staging table for winners pulled from PFM
+# =============================================================================
+# Verified winners land HERE first, never straight into Pickups: PFM knows who
+# won and how much they paid, but not when/where they'll collect, or who guides
+# them. An operator schedules each one, which creates the Pickup and links it
+# back via `pickup`.
+#
+# invoiceNumber is the unique, stable identifier PFM guarantees, so it is both
+# the dedupe key and the natural idempotency key — re-importing the same
+# winner is a no-op rather than a duplicate row.
+
+class PfmWinner(models.Model):
+    STATUSES = ["New", "Scheduled", "Skipped"]
+    invoiceNumber = models.CharField(max_length=60, unique=True)
+    bidderName = models.CharField(max_length=150, blank=True, default='')
+    bidderNameAmharic = models.CharField(max_length=150, blank=True, default='')
+    companyName = models.CharField(max_length=200, blank=True, default='')
+    phone = models.CharField(max_length=20)
+    email = models.CharField(max_length=200, blank=True, default='')
+    auction = models.CharField(max_length=300, blank=True, default='')
+    # The raw per-lot payload is kept verbatim alongside a flattened
+    # lotsSummary, so a future export can show amounts without re-hitting PFM.
+    lots = models.JSONField(default=list, blank=True)
+    lotsSummary = models.TextField(blank=True, default='')
+    amountPaid = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    verifiedAt = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=[(s, s) for s in STATUSES], default='New')
+    pickup = models.ForeignKey('Pickup', on_delete=models.SET_NULL, null=True, blank=True, related_name='pfm_winners')
+    importedAt = models.DateTimeField(auto_now_add=True)
+    importedBy = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-verifiedAt', '-importedAt']
+
+    def __str__(self):
+        return f"{self.invoiceNumber} — {self.bidderName}"

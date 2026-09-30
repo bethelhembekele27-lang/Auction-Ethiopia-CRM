@@ -19,6 +19,10 @@ import { todayISO } from "../utils/format";
 
 const THIRTY_MIN_MS = 30 * 60 * 1000;
 
+// Caller name is optional app-wide, so notification copy must never render an
+// empty gap where a person should be named.
+const nm = (s) => s || "Unknown caller";
+
 export function buildNotifications(session, followups, escalations) {
   const items = [];
   const todayStr = todayISO();
@@ -38,8 +42,8 @@ export function buildNotifications(session, followups, escalations) {
           kind: "reminder",
           title: `${
             f.date < todayStr ? "Overdue" : "Due today"
-          }: follow up with ${f.callerName}`,
-          body: `${f.callerName} needs to be contacted regarding ${f.inquiryId}.`,
+          }: follow up with ${nm(f.callerName)}`,
+          body: `${nm(f.callerName)} needs to be contacted regarding ${f.inquiryId}.`,
           createdAt: new Date(`${f.date}T00:00:00`).getTime(),
           link: "followups",
         });
@@ -59,7 +63,7 @@ export function buildNotifications(session, followups, escalations) {
           id: `esc-new-${e.id}`,
           kind: "escalation_new",
           title: `New manager request from ${e.operatorName}`,
-          body: `${e.inquiryId} (${e.callerName}) — "${note.slice(0, 80)}${
+          body: `${e.inquiryId} (${nm(e.callerName)}) — "${note.slice(0, 80)}${
             note.length > 80 ? "…" : ""
           }"`,
           createdAt: e.createdAt,
@@ -82,7 +86,7 @@ export function buildNotifications(session, followups, escalations) {
           id: `esc-fixed-${e.id}`,
           kind: "escalation_resolved",
           title: `Manager request resolved — ${e.inquiryId}`,
-          body: `The Auction Manager resolved your request on ${e.inquiryId} (${e.callerName}): "${resolutionNote.slice(
+          body: `The Auction Manager resolved your request on ${e.inquiryId} (${nm(e.callerName)}): "${resolutionNote.slice(
             0,
             80
           )}${resolutionNote.length > 80 ? "…" : ""}"`,

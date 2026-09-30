@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { PRIORITY_STAMP, STATUS_STAMP, APPT_STAMP } from "../constants/lookups";
-import { fmtDate } from "../utils/format";
+import { PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
+import { fmtDate, fmtWindow, displayName } from "../utils/format";
 import { Stamp, Modal, EmptyState } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
@@ -15,7 +15,9 @@ export default function Callers({ inquiries, followups, appointments }) {
   const callers = useMemo(() => {
     const m = {};
     inquiries.forEach((i) => {
-      if (!m[i.phone]) m[i.phone] = { phone: i.phone, callerName: i.callerName, company: i.company, inquiries: [] };
+      if (!m[i.phone]) m[i.phone] = { phone: i.phone, callerName: "", company: "", inquiries: [] };
+      if (!m[i.phone].callerName && i.callerName) m[i.phone].callerName = i.callerName; // first real name wins
+      if (!m[i.phone].company && i.company) m[i.phone].company = i.company;
       m[i.phone].inquiries.push(i);
     });
     return Object.values(m).sort((a, b) => b.inquiries.length - a.inquiries.length);
@@ -24,7 +26,7 @@ export default function Callers({ inquiries, followups, appointments }) {
   const filtered = callers.filter((c) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return c.callerName.toLowerCase().includes(q) || c.phone.includes(q) || c.company.toLowerCase().includes(q);
+    return (c.callerName || "").toLowerCase().includes(q) || c.phone.includes(q) || (c.company || "").toLowerCase().includes(q);
   });
 
   const sel = useRowSelection((c) => c.phone);
@@ -61,8 +63,8 @@ export default function Callers({ inquiries, followups, appointments }) {
                   const latest = [...c.inquiries].sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime))[0];
                   return (
                     <tr key={c.phone} className="group">
-                      <RowCheckbox checked={sel.isSelected(c)} onChange={() => sel.toggle(c)} label={`Select ${c.callerName}`} />
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{c.callerName}</td>
+                      <RowCheckbox checked={sel.isSelected(c)} onChange={() => sel.toggle(c)} label={`Select ${displayName(c.callerName)}`} />
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{displayName(c.callerName)}</td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{c.phone}</td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{c.company || "—"}</td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{c.inquiries.length}</td>
@@ -76,7 +78,7 @@ export default function Callers({ inquiries, followups, appointments }) {
         </div>
       )}
 
-      <Modal open={!!detail} onClose={() => setOpenPhone(null)} title={detail ? `${detail.callerName} — call history` : ""} wide>
+      <Modal open={!!detail} onClose={() => setOpenPhone(null)} title={detail ? `${displayName(detail.callerName)} — call history` : ""} wide>
         {detail && (
           <div>
             <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5" style={{ marginBottom: 6 }}>
@@ -105,7 +107,7 @@ export default function Callers({ inquiries, followups, appointments }) {
             <div className="text-xs font-semibold uppercase tracking-[0.04em] text-[color:var(--text-2)] mt-[18px] mb-2">Appointment history ({detailAppointments.length})</div>
             {detailAppointments.length === 0 ? <div style={{ fontSize: 13, color: "var(--text-3)" }}>None recorded.</div> : detailAppointments.map((a) => (
               <div key={a.id} style={{ fontSize: 13, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                {fmtDate(a.visitDate)} {a.visitTime} — {a.auction} <Stamp text={a.status} kind={APPT_STAMP[a.status]} />
+                {fmtWindow(a.visitWindow)} — {a.isCustom ? (a.address || "Custom visit") : (a.batch || a.auction || "Visit")}
               </div>
             ))}
           </div>

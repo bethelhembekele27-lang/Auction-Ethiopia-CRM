@@ -297,6 +297,12 @@ export default function PassPage({ token }) {
   const heroTitle = isPickup ? t.pickupPass : t.visitPass;
   const partyLabel = isPickup ? t.winner : t.visitor;
   const dateTimeLabel = isPickup ? t.pickupDateTime : t.dateTime;
+  // A setup-backed visit is a whole RANGE plus a daily time window, not one
+  // moment. Pickups send no visitDateTo/visitTimeTo, so they collapse back to
+  // a single date and time exactly as before.
+  const dateText = s.visitDateTo && s.visitDateTo !== s.visitDate ? `${s.visitDate} – ${s.visitDateTo}` : s.visitDate;
+  const timeText = s.visitTimeTo ? `${s.visitTime}–${s.visitTimeTo}` : s.visitTime;
+  const whenValue = [dateText, timeText].filter(Boolean).join(" · ");
 
   return (
     <div className={shellCls}>
@@ -346,7 +352,7 @@ export default function PassPage({ token }) {
               <DetailRow icon={<TagIcon />} label={t.batch} value={s.batch} />
               <DetailRow icon={<BoxIcon />} label={t.items} value={s.items} />
               <DetailRow icon={<BoxIcon />} label={t.quantity} value={s.quantity} />
-              <DetailRow icon={<CalendarIcon />} label={dateTimeLabel} value={`${s.visitDate} · ${s.visitTime}`} />
+              <DetailRow icon={<CalendarIcon />} label={dateTimeLabel} value={whenValue} />
               <DetailRow
                 icon={<MapPinIcon />}
                 label={t.location}
