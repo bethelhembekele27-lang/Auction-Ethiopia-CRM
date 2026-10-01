@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { VERIFICATION_STAMP } from "../constants/lookups";
-import { fmtWindow } from "../utils/format";
+import { fmtWindow, localDate, fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
@@ -11,6 +11,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import AutoCompleteField from "../components/AutoCompleteField";
 import LocationFields, { useSavedLocations } from "../components/LocationFields";
 import ConfirmDialog from "../components/ConfirmDialog";
+import RowDetail from "../components/RowDetail";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
 import { getRecentUniqueOptions } from "../utils/recentOptions";
 
@@ -54,6 +55,7 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   const sel = useRowSelection((a) => a.id);
   const { pending, confirm, cancel, run } = useConfirm();
   const loc = useSavedLocations();
+  const [viewing, setViewing] = useState(null);
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -174,10 +176,6 @@ export default function Visitations({ appointments, setAppointments, visitSetups
     setEditing(a.id);
     setDraft({ ...emptyAppt, ...a, setupIds: a.setupId ? [a.setupId] : [] });
     setModalCompanyFilter(a.company || "All"); loc.setChoice("once"); setSaveError(""); setModalOpen(true);
-  }
-  function openEditSelected() {
-    const rows = sel.selectedFrom(sorted);
-    if (rows.length === 1) openEdit(rows[0]);
   }
 
   // Edit mode: single setup dropdown
@@ -301,7 +299,6 @@ export default function Visitations({ appointments, setAppointments, visitSetups
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className={BTN_SM} disabled={sel.selectedCount !== 1} onClick={openEditSelected}><EditIcon /><span>Edit</span></button>
           <button className={BTN_SM} disabled={!sel.selectedCount} onClick={openPreview}><SendIcon /><span>Send confirmation</span></button>
           {session && ["administrator", "auction_manager"].includes(session.role) && (
             <button className={BTN_DANGER_SM} disabled={!sel.selectedCount} onClick={bulkDelete}><DeleteIcon /><span>Delete</span></button>
@@ -326,7 +323,7 @@ export default function Visitations({ appointments, setAppointments, visitSetups
               </tr></thead>
               <tbody>
                 {sorted.map((a) => (
-                  <tr key={a.id} className="group">
+                  <tr key={a.id} className="group cursor-pointer" onClick={() => setViewing(a)}>
                     {canEdit && <RowCheckbox checked={sel.isSelected(a)} onChange={() => sel.toggle(a)} label={`Select ${a.id}`} />}
                     <td className={TD + " font-mono"}>{a.id}</td>
                     <td className={TD}>
@@ -478,6 +475,19 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           <button className={BTN_GHOST} onClick={() => setPreviewOpen(false)}>Cancel</button>
         </div>
       </Modal>
+
+      <RowDetail title={viewing ? `${viewing.id}` : ""} fields={viewing && [
+          ["Visitor", viewing.visitorName || viewing.phone], ["Phone", viewing.phone],
+          ["Company", viewing.company], ["Batch", viewing.batch],
+          ["Visit window", viewing.isCustom ? "—" : fmtWindow(viewing.visitWindow)],
+          ["Guide", viewing.guideName], ["Guide phone", viewing.guidePhone],
+          ["Address", viewing.address], ["Map link", viewing.mapsLink],
+          ["Quantity", viewing.quantity], ["Verification", viewing.verificationStatus],
+          ["Registered", fmtDate(localDate(viewing.createdAt))],
+          ["Items", viewing.items, true], ["Notes", viewing.notes, true],
+        ]}
+        onClose={() => setViewing(null)}
+        onEdit={canEdit && viewing ? () => { const r = viewing; setViewing(null); openEdit(r); } : undefined} />
 
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>

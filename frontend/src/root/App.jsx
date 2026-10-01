@@ -24,7 +24,6 @@ import { pad, nowStamp } from "../utils/format";
 import * as api from "../api";
 import { enablePushForThisDevice } from "../utils/pushSetup";
 import Pickups from "../pages/Pickups";
-import PfmWinners from "../pages/PfmWinners";
 
 
 // This file is intentionally thin — routing + session shell only. All
@@ -292,7 +291,7 @@ export default function App() {
           onRequestBrowserNotifications={requestBrowserNotifications}
         />
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="pt-[26px] px-7 pb-15 mobile:pt-[18px] mobile:px-4 mobile:pb-10">
+        <div className="pt-5 px-7 pb-15 mobile:pt-[18px] mobile:px-4 mobile:pb-10">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
             <h1 style={{ margin: 0 }}>{navItems.find((n) => n.key === page)?.label}</h1>
             {!canEdit && (
@@ -323,7 +322,6 @@ export default function App() {
               {page === "visitsetup" && <VisitSetups visitSetups={visitSetups} setVisitSetups={setVisitSetups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
               {page === "visitations" && <Visitations appointments={appointments} setAppointments={setAppointments} visitSetups={visitSetups} setFollowups={setFollowups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
               {page === "pickups" && <Pickups pickups={pickups} setPickups={setPickups} canEdit={canEdit} addAudit={addAudit} session={session} />}
-      {page === "pfmwinners" && canSeePage("pfmwinners") && <PfmWinners setPickups={setPickups} addAudit={addAudit} canEdit={canEdit} />}
               {page === "complaints" && <Complaints complaints={complaints} setComplaints={setComplaints} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />} 
               {page === "reports" && canSeePage("reports") && <Reports inquiries={inquiries} appointments={appointments} complaints={complaints} />}
               {page === "audit" && canSeePage("audit") && <Audit auditLog={auditLog} setAuditLog={setAuditLog} session={session} />}

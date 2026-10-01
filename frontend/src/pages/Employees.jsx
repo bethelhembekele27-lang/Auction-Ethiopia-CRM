@@ -7,6 +7,8 @@ import { useRowSelection } from "../hooks/useRowSelection";
 import { employees as employeesApi } from "../api";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
+import RowDetail from "../components/RowDetail";
+import { PasswordInput } from "../components/AccountSettingsModal";
 import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
 
 const emptyEmployee = { name: "", username: "", password: "", role: "call_operator", email: "" };
@@ -30,6 +32,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   const [resetPwError, setResetPwError] = useState("");
   const [resetPwSaving, setResetPwSaving] = useState(false);
   const sel = useRowSelection((e) => e.id);
+  const [viewing, setViewing] = useState(null);
 
   const { pending, confirm, cancel, run } = useConfirm();
 
@@ -221,7 +224,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
             </tr></thead>
             <tbody>
               {employees.map((e) => (
-                <tr key={e.id} className="group">
+                <tr key={e.id} className="group cursor-pointer" onClick={() => setViewing(e)}>
                   <RowCheckbox checked={sel.isSelected(e)} onChange={() => sel.toggle(e)} label={`Select ${e.username}`} />
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -357,10 +360,10 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
             </div>
             <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
               <Field label="New password" full>
-                <input type="password" className={inputCls} value={resetPwValue} onChange={(e) => setResetPwValue(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+                <PasswordInput className={inputCls} value={resetPwValue} onChange={(e) => setResetPwValue(e.target.value)} autoComplete="new-password" />
               </Field>
               <Field label="Confirm new password" full>
-                <input type="password" className={inputCls} value={resetPwConfirm} onChange={(e) => setResetPwConfirm(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+                <PasswordInput className={inputCls} value={resetPwConfirm} onChange={(e) => setResetPwConfirm(e.target.value)} autoComplete="new-password" />
               </Field>
             </div>
             {resetPwError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>{resetPwError}</div>}
@@ -390,6 +393,14 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setRoleModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
+      <RowDetail title={viewing ? `${viewing.name}` : ""} fields={viewing && [
+          ["Name", viewing.name], ["Username", viewing.username], ["Email", viewing.email],
+          ["Role", roleLabels[viewing.role] || viewing.role], ["Status", viewing.status],
+          ["Last password change", viewing.lastPasswordChange && fmtDate(viewing.lastPasswordChange)],
+          ["Last username change", viewing.lastUsernameChange && fmtDate(viewing.lastUsernameChange)],
+          ["Privileges", (viewing.privileges || []).join(", "), true],
+        ]}
+        onClose={() => setViewing(null)} />
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );

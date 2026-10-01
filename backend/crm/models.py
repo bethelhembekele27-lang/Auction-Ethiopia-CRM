@@ -499,8 +499,12 @@ class Pickup(models.Model):
     quantity = models.CharField(max_length=50, blank=True, default='')
     paymentReference = models.CharField(max_length=100, blank=True, default='')
 
-    pickupDate = models.DateField()
-    pickupTime = models.TimeField()
+    # Nullable because PFM imports create the Pickup the moment a winner is
+    # confirmed, but PFM doesn't know when/where they'll collect — an operator
+    # fills these in later. Everything that renders a pickup date must handle
+    # None (see verification._pickup_when).
+    pickupDate = models.DateField(null=True, blank=True)
+    pickupTime = models.TimeField(null=True, blank=True)
 
     guideName = models.CharField(max_length=150, blank=True, default='')
     guidePhone = models.CharField(max_length=20, blank=True, default='')

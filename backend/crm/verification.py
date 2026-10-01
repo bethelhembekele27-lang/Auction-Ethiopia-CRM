@@ -331,6 +331,18 @@ def create_pickup(validated_data: dict, created_by=None):
     return Pickup.objects.create(**data)
 
 
+def _pickup_when(p):
+    """
+    "Date to be confirmed" for a pickup with no date yet. PFM imports create
+    the Pickup as soon as a winner is confirmed, but PFM doesn't know when
+    they'll collect — so the SMS must not print "None በNone" or crash.
+    """
+    if not p.pickupDate:
+        return "ቀን ይወሰናል"
+    t = p.pickupTime.strftime('%H:%M') if p.pickupTime else ''
+    return f"{p.pickupDate} በ{t}" if t else str(p.pickupDate)
+
+
 def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str, str]:
     visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
     guide_link = f"{FRONTEND_BASE_URL}/g/{verification.guideToken}"
@@ -347,7 +359,7 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{pickup.pickupDate} በ{pickup.pickupTime}\n"
+        f"{_pickup_when(pickup)}\n"
         f"{ref_line}"
         f"አካባቢ: {location}\n"
         f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
@@ -357,7 +369,7 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ያረጋግጡ\n"
         f"{pickup.winnerName} ({pickup.phone})\n"
         f"የሚሰበስቡት {what}{qty_suffix}\n"
-        f"{pickup.pickupDate} በ{pickup.pickupTime}\n"
+        f"{_pickup_when(pickup)}\n"
         f"ያረጋግጡ: {guide_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
@@ -413,7 +425,7 @@ def build_pickup_preview(pickup) -> tuple[str, str]:
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{pickup.pickupDate} በ{pickup.pickupTime}\n"
+        f"{_pickup_when(pickup)}\n"
         f"{ref_line}"
         f"አካባቢ: {location}\n"
         f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
@@ -423,7 +435,7 @@ def build_pickup_preview(pickup) -> tuple[str, str]:
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ያረጋግጡ\n"
         f"{pickup.winnerName} ({pickup.phone})\n"
         f"የሚሰበስቡት {what}{qty_suffix}\n"
-        f"{pickup.pickupDate} በ{pickup.pickupTime}\n"
+        f"{_pickup_when(pickup)}\n"
         f"ያረጋግጡ: {placeholder_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)

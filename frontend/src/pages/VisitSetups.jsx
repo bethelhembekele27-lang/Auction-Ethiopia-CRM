@@ -6,6 +6,7 @@ import { useRowSelection } from "../hooks/useRowSelection";
 import { visitSetups as visitSetupsApi } from "../api";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
+import RowDetail from "../components/RowDetail";
 import { EditIcon, DeleteIcon, PlusIcon } from "../components/icons";
 import AutoCompleteField from "../components/AutoCompleteField";
 import LocationFields, { useSavedLocations } from "../components/LocationFields";
@@ -59,6 +60,7 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
   const sel = useRowSelection((v) => v.id);
   const { pending, confirm, cancel, run } = useConfirm();
   const loc = useSavedLocations();
+  const [viewing, setViewing] = useState(null);
   async function bulkDelete() {
     const rows = sel.selectedFrom(filtered);
     if (!rows.length) return;
@@ -117,10 +119,6 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
     setSaveError("");
     setModalOpen(true);
   }
-  function openEditSelected() {
-    const rows = sel.selectedFrom(filtered);
-    if (rows.length === 1) openEdit(rows[0]);
-  }
   async function save() {
     if (!draft.company || !draft.batch || !draft.guideName || !draft.guidePhone) return;
     if (!isValidEthiopianPhone(draft.guidePhone)) {
@@ -162,9 +160,6 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
-            <EditIcon /><span>Edit</span>
-          </button>
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkDelete}>
             <DeleteIcon /><span>Delete</span>
           </button>
@@ -180,7 +175,7 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
               </tr></thead>
               <tbody>
                 {filtered.map((v) => (
-                  <tr key={v.id} className="group">
+                  <tr key={v.id} className="group cursor-pointer" onClick={() => setViewing(v)}>
                     {canEdit && <RowCheckbox checked={sel.isSelected(v)} onChange={() => sel.toggle(v)} label={`Select ${v.id}`} />}
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{v.id}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{v.company}</td>
@@ -228,6 +223,16 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
+      <RowDetail title={viewing ? `${viewing.id}` : ""} fields={viewing && [
+          ["Company", viewing.company], ["Batch", viewing.batch],
+          ["Date range", formatSetupDateRange(viewing)],
+          ["Daily hours", `${viewing.guideTimeFrom}–${viewing.guideTimeTo}`],
+          ["Address", viewing.address], ["Map link", viewing.mapsLink],
+          ["Guide", viewing.guideName], ["Guide phone", viewing.guidePhone],
+          ["Created by", viewing.createdBy], ["Items", viewing.items, true],
+        ]}
+        onClose={() => setViewing(null)}
+        onEdit={canEdit && viewing ? () => { const r = viewing; setViewing(null); openEdit(r); } : undefined} />
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );

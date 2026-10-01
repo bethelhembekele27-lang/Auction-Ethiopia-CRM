@@ -2,8 +2,6 @@ import { useState, useMemo } from "react";
 import { PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
 import { fmtDate, fmtWindow, displayName } from "../utils/format";
 import { Stamp, Modal, EmptyState } from "../components/ui";
-import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
-import { useRowSelection } from "../hooks/useRowSelection";
 
 export default function Callers({ inquiries, followups, appointments }) {
   const [query, setQuery] = useState("");
@@ -29,13 +27,6 @@ export default function Callers({ inquiries, followups, appointments }) {
     return (c.callerName || "").toLowerCase().includes(q) || c.phone.includes(q) || (c.company || "").toLowerCase().includes(q);
   });
 
-  const sel = useRowSelection((c) => c.phone);
-
-  function viewSelected() {
-    const rows = sel.selectedFrom(filtered);
-    if (rows.length === 1) setOpenPhone(rows[0].phone);
-  }
-
   const detail = openPhone ? callers.find((c) => c.phone === openPhone) : null;
   const detailFollowups = detail ? followups.filter((f) => detail.inquiries.some((i) => i.id === f.inquiryId)) : [];
   const detailAppointments = detail ? appointments.filter((a) => a.phone === detail.phone) : [];
@@ -46,24 +37,18 @@ export default function Callers({ inquiries, followups, appointments }) {
         <input className="w-[220px] font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" placeholder="Search caller, phone or company…" value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
 
-      <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={viewSelected}>View history</button>
-      </BulkActionBar>
-
       {filtered.length === 0 ? <EmptyState text="No callers found." /> : (
         <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
           <div style={{ overflowX: "auto" }}>
             <table className="w-full border-collapse text-[13px] min-w-[640px]">
               <thead><tr className="group">
-                <HeaderCheckbox checked={sel.isAllSelected(filtered)} onChange={() => sel.toggleAll(filtered)} />
                 <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Caller</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Phone</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Total inquiries</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Latest status</th>
               </tr></thead>
               <tbody>
                 {filtered.map((c) => {
                   const latest = [...c.inquiries].sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime))[0];
                   return (
-                    <tr key={c.phone} className="group">
-                      <RowCheckbox checked={sel.isSelected(c)} onChange={() => sel.toggle(c)} label={`Select ${displayName(c.callerName)}`} />
+                    <tr key={c.phone} className="group cursor-pointer" onClick={() => setOpenPhone(c.phone)}>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{displayName(c.callerName)}</td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{c.phone}</td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{c.company || "—"}</td>

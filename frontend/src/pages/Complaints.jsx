@@ -1,11 +1,12 @@
 import { useState, useMemo } from "react";
 import { COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITIES, PRIORITY_STAMP } from "../constants/lookups";
-import { todayISO, displayName } from "../utils/format";
+import { todayISO, displayName, fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
+import RowDetail from "../components/RowDetail";
 import { complaints as complaintsApi } from "../api";
 import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
 import AutoCompleteField from "../components/AutoCompleteField";
@@ -28,6 +29,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
   const [bulkError, setBulkError] = useState("");
 
   const sel = useRowSelection((c) => c.id);
+  const [viewing, setViewing] = useState(null);
   const { pending, confirm, cancel, run } = useConfirm();
 
   // 3d: repeat callers — offer their phone from history instead of
@@ -85,11 +87,6 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
     setDraft({ ...c });
     setSaveError("");
     setModalOpen(true);
-  }
-
-  function openEditSelected() {
-    const rows = sel.selectedFrom(sorted);
-    if (rows.length === 1) openEdit(rows[0]);
   }
 
   async function save() {
@@ -219,9 +216,6 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
-            <EditIcon /><span>Edit</span>
-          </button>
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkResolve}>
             <CheckIcon /><span>Mark Resolved</span>
           </button>
@@ -279,7 +273,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
 
               <tbody>
                 {sorted.map((c) => (
-                  <tr key={c.id} className="group">
+                  <tr key={c.id} className="group cursor-pointer" onClick={() => setViewing(c)}>
                     {canEdit && (
                       <RowCheckbox
                         checked={sel.isSelected(c)}
@@ -477,6 +471,18 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
           </button>
         </div>
       </Modal>
+
+      <RowDetail title={viewing ? `${viewing.id}` : ""} fields={viewing && [
+          ["Caller", viewing.callerName || "Unknown caller"], ["Phone", viewing.phone],
+          ["Inquiry", viewing.inquiryId], ["Category", viewing.category],
+          ["Department", viewing.department], ["Priority", viewing.priority],
+          ["Status", viewing.status], ["Logged", fmtDate(viewing.date)],
+          ["Resolved on", viewing.resolutionDate && fmtDate(viewing.resolutionDate)],
+          ["Description", viewing.description, true],
+          ["Resolution", viewing.resolution, true],
+        ]}
+        onClose={() => setViewing(null)}
+        onEdit={canEdit && viewing ? () => { const r = viewing; setViewing(null); openEdit(r); } : undefined} />
 
       <ConfirmDialog
         pending={pending}

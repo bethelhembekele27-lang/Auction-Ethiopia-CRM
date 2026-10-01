@@ -10,6 +10,7 @@ import { emptyComplaint } from "./Complaints";
 import { inquiries as inquiriesApi, appointments as appointmentsApi, followups as followupsApi, complaints as complaintsApi, escalations as escalationsApi } from "../api";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
+import RowDetail from "../components/RowDetail";
 import { EditIcon, DeleteIcon, CalendarIcon, SendIcon } from "../components/icons";
 import AutoCompleteField from "../components/AutoCompleteField";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
@@ -100,6 +101,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   const [escError, setEscError] = useState("");
 
   const sel = useRowSelection((i) => i.id);
+  const [viewing, setViewing] = useState(null);
   
 
   const openVisitSetups = useMemo(() => (visitSetups || []).filter(isSetupOpen), [visitSetups]);
@@ -223,7 +225,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     setSaveError("");
     setModalOpen(true);
   }
-  function openEditSelected() { if (soleSelected) openEdit(soleSelected); }
   async function save() {
       if (!draft.phone) return;
     if (!isValidEthiopianPhone(draft.phone)) {
@@ -404,9 +405,6 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!soleSelected} onClick={openEditSelected}>
-            <EditIcon /><span>Edit</span>
-          </button>
 
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!soleSelected} onClick={openVisitationSelected}>
             <CalendarIcon /><span>Book visitation</span>
@@ -440,7 +438,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
               </tr></thead>
               <tbody>
                 {filtered.map((i) => (
-                  <tr key={i.id} className="group">
+                  <tr key={i.id} className="group cursor-pointer" onClick={() => setViewing(i)}>
                     {canEdit && <RowCheckbox checked={sel.isSelected(i)} onChange={() => sel.toggle(i)} label={`Select ${i.id}`} />}
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{i.id}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.callerName || "Unknown caller"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.phone}{i.company ? ` · ${i.company}` : ""}</div></td>
@@ -626,6 +624,19 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           </>
         )}
       </Modal>
+      <RowDetail title={viewing ? `${viewing.id}` : ""} fields={viewing && [
+          ["Caller", viewing.callerName || "Unknown caller"], ["Phone", viewing.phone],
+          ["Company", viewing.company], ["Auction", viewing.auction], ["Batch", viewing.batch],
+          ["Category", viewing.category], ["Priority", viewing.priority], ["Status", viewing.status],
+          ["Operator", viewing.operator], ["Date", fmtDate((viewing.dateTime || "").slice(0, 10))],
+          ["Follow-up date", viewing.followUpDate && fmtDate(viewing.followUpDate)],
+          ["Resolved", viewing.resolvedDate && fmtDate(viewing.resolvedDate)],
+          ["Description", viewing.description, true],
+          ["Resolution notes", viewing.resolutionNotes, true],
+          ["Attachments", (viewing.attachments || []).map((a) => a.fileName).join(", "), true],
+        ]}
+        onClose={() => setViewing(null)}
+        onEdit={canEdit && viewing ? () => { const r = viewing; setViewing(null); openEdit(r); } : undefined} />
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );

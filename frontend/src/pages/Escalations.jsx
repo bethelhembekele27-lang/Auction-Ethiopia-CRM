@@ -4,6 +4,7 @@ import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSe
 import { useRowSelection } from "../hooks/useRowSelection";
 import { escalations as escalationsApi } from "../api";
 import { CheckIcon } from "../components/icons";
+import RowDetail from "../components/RowDetail";
 
 export default function Escalations({ escalations, setEscalations, addAudit, session }) {
   const [resolveTarget, setResolveTarget] = useState(null);
@@ -22,6 +23,7 @@ export default function Escalations({ escalations, setEscalations, addAudit, ses
   const resolved = visible.filter((e) => e.status === "Resolved");
 
   const sel = useRowSelection((e) => e.id);
+  const [viewing, setViewing] = useState(null);
 
   function openResolve(e) { setResolveTarget(e); setResolveNote(""); setSaveError(""); }
   function openResolveSelected() {
@@ -56,7 +58,7 @@ export default function Escalations({ escalations, setEscalations, addAudit, ses
             </tr></thead>
             <tbody>
               {rows.map((e) => (
-                <tr key={e.id} className="group">
+                <tr key={e.id} className="group cursor-pointer" onClick={() => setViewing(e)}>
                   {selectable && <RowCheckbox checked={sel.isSelected(e)} onChange={() => sel.toggle(e)} label={`Select ${e.id}`} />}
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{e.id}</td>
                   <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{e.inquiryId}</td>
@@ -112,6 +114,16 @@ export default function Escalations({ escalations, setEscalations, addAudit, ses
           </>
         )}
       </Modal>
+
+      <RowDetail title={viewing ? `${viewing.id}` : ""} fields={viewing && [
+          ["Inquiry", viewing.inquiryId],
+          ["Caller", viewing.callerName || "Unknown caller"],
+          ["Raised by", viewing.operatorName],
+          ["Status", viewing.status],
+          ["Note", viewing.note, true],
+          ["Resolution", viewing.resolutionNote, true],
+        ]}
+        onClose={() => setViewing(null)} />
     </div>
   );
 }

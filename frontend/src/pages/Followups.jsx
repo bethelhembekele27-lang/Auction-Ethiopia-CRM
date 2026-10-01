@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
+import RowDetail from "../components/RowDetail";
 import { FOLLOWUP_STATUSES, FOLLOWUP_STAMP } from "../constants/lookups";
 import { fmtDate, displayName } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
@@ -28,6 +29,7 @@ export default function Followups({
   const [bulkError, setBulkError] = useState("");
 
   const sel = useRowSelection((f) => f.id);
+  const [viewing, setViewing] = useState(null);
   const { pending, confirm, cancel, run } = useConfirm();
   const companyOptions = useMemo(
     () => [
@@ -77,13 +79,6 @@ export default function Followups({
     setModalOpen(true);
   }
 
-  function openEditSelected() {
-    const rows = sel.selectedFrom(sorted);
-
-    if (rows.length === 1) {
-      openEdit(rows[0]);
-    }
-  }
   async function deleteSelected() {
     const rows = sel.selectedFrom(sorted);
 
@@ -280,15 +275,6 @@ export default function Followups({
           onClear={sel.clear}
         >
           <button
-            className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label"
-            disabled={sel.selectedCount !== 1}
-            onClick={openEditSelected}
-          >
-            <EditIcon />
-            <span>Edit</span>
-          </button>
-
-          <button
             className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label"
             disabled={!sel.selectedCount}
             onClick={() => bulkSetStatus("Satisfied")}
@@ -383,7 +369,7 @@ export default function Followups({
 
               <tbody>
                 {sorted.map((f) => (
-                  <tr key={f.id} className="group">
+                  <tr key={f.id} className="group cursor-pointer" onClick={() => setViewing(f)}>
                     {canEdit && (
                       <RowCheckbox
                         checked={sel.isSelected(f)}
@@ -534,6 +520,15 @@ export default function Followups({
           </>
         )}
       </Modal>
+      <RowDetail title={viewing ? `${viewing.id}` : ""} fields={viewing && [
+          ["Caller", viewing.callerName || "Unknown caller"], ["Inquiry", viewing.inquiryId],
+          ["Company", viewing.company], ["Batch", viewing.batch], ["Guide", viewing.guideName],
+          ["Date", fmtDate(viewing.date)], ["Operator", viewing.assignedOperator],
+          ["Reminder", viewing.reminder ? "Yes" : "No"], ["Status", viewing.status],
+          ["Created", fmtDate(viewing.createdDate)], ["Notes", viewing.notes, true],
+        ]}
+        onClose={() => setViewing(null)}
+        onEdit={canEdit && viewing ? () => { const r = viewing; setViewing(null); openEdit(r); } : undefined} />
       <ConfirmDialog
         pending={pending}
         onCancel={cancel}

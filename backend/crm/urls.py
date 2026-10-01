@@ -6,19 +6,16 @@ from .views import (
     RoleDeleteView,ChangePasswordView,UpdateUsernameView,PushSubscribeView,PushUnsubscribeView, VapidPublicKeyView,TriggerFollowupRemindersView,PassResolveView,PassVerifyView,
     PickupListCreateView, PickupDetailView, PickupSendConfirmationView, PickupPreviewConfirmationView, PickupBulkSendConfirmationView,
     HealthView, SavedLocationView,
-    PfmPreviewView, PfmImportView, PfmWinnerListView, PfmWinnerSkipView, PfmSchedulePickupView,
+    PfmPreviewView, PfmImportView,
 )
 
 urlpatterns = [
     path('health/', HealthView.as_view(), name='health'),
 
-    # PFM winner import — winners stage in PfmWinner, then get scheduled
-    # into a Pickup by an operator.
+    # PFM verified-winner import. Creates Pickups directly, so there is no
+    # separate winners listing/scheduling API.
     path('pfm/preview/', PfmPreviewView.as_view(), name='pfm-preview'),
     path('pfm/import/', PfmImportView.as_view(), name='pfm-import'),
-    path('pfm/winners/', PfmWinnerListView.as_view(), name='pfm-winners'),
-    path('pfm/winners/<int:winner_id>/skip/', PfmWinnerSkipView.as_view(), name='pfm-winner-skip'),
-    path('pfm/winners/<int:winner_id>/schedule-pickup/', PfmSchedulePickupView.as_view(), name='pfm-winner-schedule'),
 
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),

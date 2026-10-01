@@ -24,7 +24,7 @@ export function HeaderCheckbox({ checked, onChange }) {
 
 export function RowCheckbox({ checked, onChange, label }) {
   return (
-    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle w-8">
+    <td onClick={(e) => e.stopPropagation()} className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle w-8">
       <input
         type="checkbox"
         checked={checked}

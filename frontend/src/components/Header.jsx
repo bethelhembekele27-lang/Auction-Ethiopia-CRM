@@ -28,18 +28,18 @@ export default function Header({
   const visibleNavItems = navItems.filter((n) => !n.hidden && (!n.roles || n.roles.includes(role)));
 
   return (
-    <div className="w-full bg-[color:var(--panel)] border-b border-[color:var(--border)] text-[color:var(--text)] shrink-0 flex items-center justify-between flex-wrap gap-y-3 gap-x-6 px-7 py-3.5 sticky top-0 z-50 mobile:px-4 mobile:py-3">
-      <div className="flex flex-col items-start gap-1">
-        <img src={logo} alt="Auction Ethiopia S.C." className="h-[34px] w-auto block" />
-        <div className="text-[11px] text-[color:var(--text-2)] tracking-[0.03em] uppercase whitespace-nowrap xs:hidden">CRM &amp; Call Center</div>
+    <div className="w-full bg-[color:var(--panel)] border-b border-[color:var(--border)] text-[color:var(--text)] shrink-0 flex items-center justify-between gap-x-6 px-6 py-1.5 sticky top-0 z-50 mobile:px-4">
+      <div className="flex flex-col items-start leading-none">
+        <img src={logo} alt="Auction Ethiopia S.C." className="h-[30px] w-auto block" />
+        <div className="text-[10px] text-[color:var(--text-2)] tracking-[0.04em] uppercase whitespace-nowrap mt-0.5 xs:hidden">CRM &amp; Call Center</div>
       </div>
-      <div className="flex items-center gap-5 flex-wrap">
-        <div className="flex flex-row flex-wrap items-center gap-1 mobile:hidden">
+      <div className="flex items-center gap-5">
+        <div className="flex flex-row items-center gap-1 mobile:hidden">
           {visibleNavItems.map((n) => (
             <div
               key={n.key}
               className={
-                "flex items-center px-3.5 py-2 rounded-[5px] text-sm font-medium cursor-pointer border-b-2 transition-colors duration-[120ms] hover:bg-[color:var(--paper)] hover:text-[color:var(--text)] " +
+                "flex items-center px-3 py-1.5 rounded-[5px] text-[14px] font-medium cursor-pointer border-b-2 transition-colors duration-[120ms] hover:bg-[color:var(--paper)] hover:text-[color:var(--text)] " +
                 (page === n.key
                   ? "text-[color:var(--brass)] border-b-[color:var(--brass)]"
                   : "text-[color:var(--text-2)] border-transparent")
@@ -80,7 +80,7 @@ export default function Header({
               <div
                 key={n.key}
                 className={
-                  "flex items-center px-3.5 py-2 rounded-[5px] text-sm font-medium cursor-pointer hover:bg-[color:var(--paper)] hover:text-[color:var(--text)] " +
+                  "flex items-center px-3 py-1.5 rounded-[5px] text-[14px] font-medium cursor-pointer hover:bg-[color:var(--paper)] hover:text-[color:var(--text)] " +
                   (page === n.key ? "text-[color:var(--brass)] bg-[color:var(--paper)]" : "text-[color:var(--text-2)]")
                 }
                 onClick={() => goTo(n.key)}

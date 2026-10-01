@@ -4,10 +4,11 @@ import { VERIFICATION_STAMP } from "../constants/lookups";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
-import { pickups as pickupsApi } from "../api";
+import { pickups as pickupsApi, pfm as pfmApi } from "../api";
 import { EditIcon, DeleteIcon, PlusIcon, CheckIcon, SendIcon } from "../components/icons";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
+import RowDetail from "../components/RowDetail";
 import MonthCalendar from "../components/MonthCalendar";
 import AutoCompleteField from "../components/AutoCompleteField";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
@@ -31,6 +32,7 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   const [saveError, setSaveError] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [viewMode, setViewMode] = useState("list");
+  const [viewing, setViewing] = useState(null);
   const sel = useRowSelection((p) => p.id);
   const { pending, confirm, cancel, run } = useConfirm();
 
@@ -42,6 +44,34 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   const [confirmSending, setConfirmSending] = useState(false);
   const [confirmNotice, setConfirmNotice] = useState(null);
 
+  /* ---------- PFM import ---------- */
+  // Imported winners arrive as Pickups with no date/time (PFM doesn't know
+  // when they'll collect), so the operator fills that in by editing the row.
+  const [impRows, setImpRows] = useState(null);
+  const [impPick, setImpPick] = useState(new Set());
+  const [impLoading, setImpLoading] = useState(false);
+  const [impError, setImpError] = useState("");
+
+  async function runPreview() {
+    setImpLoading(true); setImpError("");
+    try {
+      const { rows } = await pfmApi.preview();
+      setImpRows(rows);
+      setImpPick(new Set(rows.filter((r) => r.state === "new").map((r) => r.invoiceNumber)));
+    } catch (e) { setImpError(e.body?.message || "Couldn't reach PFM."); }
+    finally { setImpLoading(false); }
+  }
+  async function runImport() {
+    setImpLoading(true); setImpError("");
+    try {
+      const res = await pfmApi.importWinners([...impPick]);
+      addAudit("Import verified winners", "—", `${res.imported.length} imported`, res.imported.join(", ").slice(0, 150));
+      setPickups((await pickupsApi.listPickups()) || []);
+      setImpRows(null);
+    } catch (e) { setImpError(e.body?.message || "Import failed — try again."); }
+    finally { setImpLoading(false); }
+  }
+
   const phoneOptions = useMemo(
     () => getRecentUniqueOptions(pickups, (p) => p.phone, (p) => p.pickupDate, 30),
     [pickups]
@@ -52,7 +82,10 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   );
 
   const filtered = fStatus === "All" ? pickups : pickups.filter((p) => p.status === fStatus);
-  const sorted = [...filtered].sort((a, b) => new Date(a.pickupDate) - new Date(b.pickupDate));
+  // 8.64e15 sorts undated PFM imports to the very end — a plain
+  // new Date(null) would land them in 1970 and put them first.
+  const sorted = [...filtered].sort((a, b) =>
+    new Date(a.pickupDate || 8.64e15) - new Date(b.pickupDate || 8.64e15));
 
   async function openPreview() {
     const rows = sel.selectedFrom(sorted);
@@ -121,13 +154,10 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
 
   function openNew() { setEditing(null); setDraft(emptyPickup); setSaveError(""); setModalOpen(true); }
   function openEdit(p) { setEditing(p.id); setDraft({ ...p }); setSaveError(""); setModalOpen(true); }
-  function openEditSelected() {
-    const rows = sel.selectedFrom(sorted);
-    if (rows.length === 1) openEdit(rows[0]);
-  }
 
   async function save() {
-    if (!draft.winnerName || !draft.phone || !draft.pickupDate || !draft.pickupTime) return;
+    // Date/time are optional now — a PFM import lands here with neither.
+    if (!draft.winnerName || !draft.phone) return;
     if (!isValidEthiopianPhone(draft.phone)) {
       setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
       return;
@@ -135,15 +165,22 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
     setSaving(true);
     setSaveError("");
     try {
+      // Empty <input type="date"> yields "", which DRF rejects as blank on a
+      // nullable field — it must be sent as null to clear the value.
+      const payload = {
+        ...draft,
+        pickupDate: draft.pickupDate || null,
+        pickupTime: draft.pickupTime || null,
+      };
       if (editing) {
         const prev = pickups.find((p) => p.id === editing);
-        const updated = await pickupsApi.updatePickup(editing, draft);
+        const updated = await pickupsApi.updatePickup(editing, payload);
         setPickups((prev2) => prev2.map((p) => (p.id === editing ? { ...p, ...updated } : p)));
         if (prev && prev.status !== draft.status) {
           addAudit("Update pickup status", prev.status, draft.status, `${draft.id} · ${draft.winnerName}`);
         }
       } else {
-        const created = await pickupsApi.createPickup(draft);
+        const created = await pickupsApi.createPickup(payload);
         setPickups((prev2) => [created, ...prev2]);
         addAudit("Schedule pickup", "—", `${created.id} created`, `${created.winnerName} · ${created.itemDescription || created.auction}`);
       }
@@ -175,6 +212,44 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
 
   return (
     <div>
+      {canEdit && (
+        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] p-[18px] mb-4">
+          <h3 style={{ margin: "0 0 4px" }}>Import verified winners</h3>
+          <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 12 }}>
+            Pull winners whose processing fee is verified. Dates and times can be added afterwards.
+          </div>
+          {impError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 10 }}>{impError}</div>}
+          {!impRows && (
+            <button className="font-sans text-[13px] font-semibold px-4 py-2.5 rounded-[6px] bg-[color:var(--ink)] text-white border border-[color:var(--ink)] cursor-pointer" disabled={impLoading} onClick={runPreview}>
+              {impLoading ? "Loading…" : "Preview import"}
+            </button>
+          )}
+          {impRows && (
+            <>
+              {impRows.length === 0 ? <EmptyState text="No verified winners to import." /> : (
+                <div style={{ maxHeight: 320, overflowY: "auto" }} className="border border-[color:var(--border)] rounded-[8px]">
+                  {impRows.map((r) => (
+                    <label key={r.invoiceNumber} style={{ display: "flex", gap: 10, padding: "9px 12px", borderBottom: "1px solid var(--border)", fontSize: 13, opacity: r.state === "new" ? 1 : 0.55 }}>
+                      <input type="checkbox" disabled={r.state !== "new"} checked={impPick.has(r.invoiceNumber)}
+                        onChange={() => setImpPick((p) => { const n = new Set(p); n.has(r.invoiceNumber) ? n.delete(r.invoiceNumber) : n.add(r.invoiceNumber); return n; })} />
+                      <span style={{ flex: 1 }}><b className="font-mono">{r.invoiceNumber}</b> — {r.bidderName || r.companyName} · {r.phone}
+                        <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{r.auction} {r.lotsSummary}{r.reason ? ` — ${r.reason}` : ""}</div></span>
+                      <Stamp text={r.state === "new" ? "Ready" : r.state === "duplicate" ? "Imported" : "Invalid"} kind={r.state === "new" ? "blue" : r.state === "duplicate" ? "gray" : "red"} />
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button className="font-sans text-[13px] font-semibold px-4 py-2.5 rounded-[6px] bg-[color:var(--ink)] text-white border border-[color:var(--ink)] cursor-pointer disabled:opacity-40" disabled={!impPick.size || impLoading} onClick={runImport}>
+                  {impLoading ? "Importing…" : `Confirm import${impPick.size ? ` (${impPick.size})` : ""}`}
+                </button>
+                <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-transparent cursor-pointer" onClick={() => setImpRows(null)}>Cancel</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] p-3.5 flex flex-wrap gap-2 items-center mb-4">
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option value="All">All statuses</option>{PICKUP_STATUSES.map((s) => <option key={s}>{s}</option>)}
@@ -190,9 +265,6 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
 
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
-          <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openEditSelected}>
-            <EditIcon /><span>Edit</span>
-          </button>
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={openPreview}>
             <SendIcon /><span>Send confirmation</span>
           </button>
@@ -241,7 +313,7 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
                 </tr></thead>
                 <tbody>
                   {sorted.map((p) => (
-                    <tr key={p.id} className="group">
+                    <tr key={p.id} className="group cursor-pointer" onClick={() => setViewing(p)}>
                       {canEdit && <RowCheckbox checked={sel.isSelected(p)} onChange={() => sel.toggle(p)} label={`Select ${p.id}`} />}
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{p.id}</td>
                       <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.winnerName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.phone}</div></td>
@@ -329,6 +401,19 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
           </button>
         </div>
       </Modal>
+
+      <RowDetail title={viewing ? `${viewing.id}` : ""} fields={viewing && [
+          ["Winner", viewing.winnerName], ["Phone", viewing.phone], ["Auction", viewing.auction],
+          ["Payment ref", viewing.paymentReference],
+          ["Date", viewing.pickupDate && fmtDate(viewing.pickupDate)],
+          ["Time", viewing.pickupTime],
+          ["Guide", viewing.guideName], ["Guide phone", viewing.guidePhone],
+          ["Address", viewing.address], ["Map link", viewing.mapsLink],
+          ["Quantity", viewing.quantity], ["Verification", viewing.verificationStatus],
+          ["Status", viewing.status], ["Item", viewing.itemDescription, true],
+        ]}
+        onClose={() => setViewing(null)}
+        onEdit={canEdit && viewing ? () => { const r = viewing; setViewing(null); openEdit(r); } : undefined} />
 
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>

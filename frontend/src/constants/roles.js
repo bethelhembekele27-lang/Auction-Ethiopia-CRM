@@ -32,7 +32,6 @@ export const navItems = [
   { key: "visitsetup", label: "Visit Setup" },
   { key: "visitations", label: "Visitations" },
   { key: "pickups", label: "Pickups" },          // ← new
-  { key: "pfmwinners", label: "PFM Winners", roles: ["administrator", "auction_manager", "call_operator"] },
   { key: "complaints", label: "Complaints" },
   { key: "reports", label: "Reports", roles: ["administrator"] },
   { key: "audit", label: "Audit trail", roles: ADMIN_LIKE_ROLES },

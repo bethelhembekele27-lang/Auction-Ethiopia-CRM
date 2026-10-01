@@ -37,6 +37,7 @@ from .serializers import (
 from django.contrib.auth.models import User
 from rest_framework.parsers import MultiPartParser
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 import hmac
 import os
 from .push import send_push_to_user
@@ -46,7 +47,7 @@ from .verification import (
     create_verification, build_visitation_messages, build_pickup_messages,
     build_visitation_preview, build_pickup_preview, send_and_log,
     resolve_pass, verify_token, VerificationError,
-    build_custom_visit_message,
+    build_custom_visit_message, create_pickup,
 )
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -1497,13 +1498,16 @@ class PfmPreviewView(RoleRequiredAPIView):
 
 class PfmImportView(RoleRequiredAPIView):
     """
-    POST {invoiceNumbers:[...], since?} — re-fetches from PFM and imports only
-    the invoice numbers the operator selected.
+    POST {invoiceNumbers:[...]} — re-fetches from PFM and, for each selected
+    invoice number, creates a real Pickup plus its PfmWinner audit row.
 
     The client sends invoice NUMBERS only, never row data, and this view
     re-fetches from PFM to resolve them. That's the whole point: a browser
     that could post winner rows directly would be able to invent a winner and
     get a real Pickup created from it.
+
+    The Pickup is created WITHOUT a date/time — PFM doesn't know when the
+    winner will collect — so the operator fills that in on the Pickups page.
     """
     required_roles = PFM_ROLES
 
@@ -1511,7 +1515,7 @@ class PfmImportView(RoleRequiredAPIView):
         wanted = request.data.get('invoiceNumbers', [])
         if not isinstance(wanted, list) or not wanted:
             return Response({'message': 'invoiceNumbers must be a non-empty list.'}, status=http_status.HTTP_400_BAD_REQUEST)
-        ok, result = fetch_verified_winners(str(request.data.get('since', '')).strip())
+        ok, result = fetch_verified_winners('')
         if not ok:
             return Response({'message': result}, status=http_status.HTTP_502_BAD_GATEWAY)
         wanted = set(wanted)
@@ -1523,68 +1527,21 @@ class PfmImportView(RoleRequiredAPIView):
             if state != 'new':
                 skipped.append({'invoiceNumber': row['invoiceNumber'], 'reason': reason})
                 continue
-            PfmWinner.objects.get_or_create(
-                invoiceNumber=row['invoiceNumber'],
-                defaults={**{k: row[k] for k in ('bidderName', 'bidderNameAmharic', 'companyName', 'phone',
-                                                 'email', 'auction', 'lots', 'lotsSummary', 'amountPaid', 'verifiedAt')},
-                          'importedBy': request.user})
+            # Both writes are one unit of work: a PfmWinner row without its
+            # Pickup (or the reverse) would leave the winner uncollectable, or
+            # a Pickup nothing can trace back to PFM.
+            with transaction.atomic():
+                pickup = create_pickup({
+                    'winnerName': row['bidderName'] or row['companyName'], 'phone': row['phone'],
+                    'auction': row['auction'], 'itemDescription': row['lotsSummary'],
+                    'paymentReference': row['invoiceNumber'],
+                }, created_by=_employee_for(request.user))
+                PfmWinner.objects.create(
+                    invoiceNumber=row['invoiceNumber'], pickup=pickup, status='Scheduled', importedBy=request.user,
+                    **{k: row[k] for k in ('bidderName', 'bidderNameAmharic', 'companyName', 'phone', 'email',
+                                           'auction', 'lots', 'lotsSummary', 'amountPaid', 'verifiedAt')})
             imported.append(row['invoiceNumber'])
         if imported:
-            log_audit(request, 'Import PFM winners', '—', f'{len(imported)} imported', ', '.join(imported)[:500])
+            log_audit(request, 'Import verified winners', '—', f'{len(imported)} imported', ', '.join(imported)[:500])
         return Response({'imported': imported, 'skipped': skipped})
-
-
-def _winner_json(w):
-    return {'id': w.id, 'invoiceNumber': w.invoiceNumber, 'bidderName': w.bidderName, 'companyName': w.companyName,
-            'phone': w.phone, 'auction': w.auction, 'lotsSummary': w.lotsSummary,
-            'amountPaid': str(w.amountPaid) if w.amountPaid is not None else '',
-            'verifiedAt': w.verifiedAt.isoformat() if w.verifiedAt else '',
-            'status': w.status, 'pickupId': w.pickup.publicId if w.pickup else ''}
-
-
-class PfmWinnerListView(RoleRequiredAPIView):
-    required_roles = ROLES_ANY_AUTHENTICATED_USER
-
-    def get(self, request):
-        return Response([_winner_json(w) for w in PfmWinner.objects.select_related('pickup')])
-
-
-class PfmWinnerSkipView(RoleRequiredAPIView):
-    """POST — toggles New <-> Skipped. A scheduled winner can't be skipped."""
-    required_roles = PFM_ROLES
-
-    def post(self, request, winner_id):
-        w = get_object_or_404(PfmWinner, id=winner_id)
-        if w.status == 'Scheduled':
-            return Response({'message': 'Already scheduled as a pickup.'}, status=http_status.HTTP_400_BAD_REQUEST)
-        prev, w.status = w.status, 'Skipped' if w.status != 'Skipped' else 'New'
-        w.save(update_fields=['status'])
-        log_audit(request, 'PFM winner status', prev, w.status, w.invoiceNumber)
-        return Response(_winner_json(w))
-
-
-class PfmSchedulePickupView(RoleRequiredAPIView):
-    """POST {pickupDate, pickupTime, guideName?, guidePhone?, address?, mapsLink?, quantity?}"""
-    required_roles = PFM_ROLES
-
-    def post(self, request, winner_id):
-        w = get_object_or_404(PfmWinner, id=winner_id)
-        if w.pickup_id:
-            return Response({'message': 'A pickup is already scheduled for this winner.'}, status=http_status.HTTP_400_BAD_REQUEST)
-        d = request.data
-        data = {
-            'winnerName': w.bidderName or w.companyName, 'phone': w.phone, 'auction': w.auction,
-            'itemDescription': w.lotsSummary, 'paymentReference': w.invoiceNumber,
-            'quantity': d.get('quantity', ''), 'pickupDate': d.get('pickupDate'), 'pickupTime': d.get('pickupTime'),
-            'guideName': d.get('guideName', ''), 'guidePhone': d.get('guidePhone', ''),
-            'address': d.get('address', ''), 'mapsLink': d.get('mapsLink', ''),
-        }
-        ser = PickupSerializer(data=data, context={'request': request})
-        ser.is_valid(raise_exception=True)
-        pickup = ser.save()
-        w.pickup, w.status = pickup, 'Scheduled'
-        w.save(update_fields=['pickup', 'status'])
-        log_audit(request, 'Schedule pickup from PFM', w.invoiceNumber, pickup.publicId, pickup.winnerName)
-        return Response({'winner': _winner_json(w), 'pickup': PickupSerializer(pickup).data},
-                        status=http_status.HTTP_201_CREATED)
 

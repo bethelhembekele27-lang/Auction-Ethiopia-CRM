@@ -1083,7 +1083,10 @@ class PickupSerializer(serializers.ModelSerializer):
     pattern as VisitSetupSerializer.
     """
     id = serializers.CharField(source='publicId', read_only=True)
-    pickupTime = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'])
+    # required=False/allow_null so an operator can create a pickup before the
+    # collection date is agreed (and so a PFM import can create one at all).
+    # pickupDate gets this automatically from the model's null=True, blank=True.
+    pickupTime = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'], required=False, allow_null=True)
     createdBy = serializers.CharField(source='createdBy.name', read_only=True, default='')
     verificationStatus = serializers.SerializerMethodField()
 

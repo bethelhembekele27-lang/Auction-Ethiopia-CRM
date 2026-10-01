@@ -38,7 +38,7 @@ export default function Audit({ auditLog, setAuditLog, session }) {
       ) : (
         <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
           <div style={{ overflowX: "auto" }}>
-            <table className="w-full border-collapse text-[13px] min-w-[900px]">
+            <table className="w-full border-collapse text-[13px] min-w-[760px]">
               <thead>
                 <tr className="group">
                   <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th>
@@ -49,7 +49,6 @@ export default function Audit({ auditLog, setAuditLog, session }) {
                   <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Previous</th>
                   <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">New</th>
                   <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Reason</th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">IP</th>
                 </tr>
               </thead>
               <tbody>
@@ -63,7 +62,6 @@ export default function Audit({ auditLog, setAuditLog, session }) {
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{e.pv}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{e.nv}</td>
                     <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] max-w-[240px]">{e.rs}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{e.ip}</td>
                   </tr>
                 ))}
               </tbody>

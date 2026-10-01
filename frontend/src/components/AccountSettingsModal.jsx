@@ -1,6 +1,33 @@
 import { useState } from "react";
 import { auth } from "../api";
 
+// Exported so the Employees reset-password modal can use the same
+// show/hide affordance. `className` is accepted because that modal renders
+// inside a grid with inputCls styling, while this one uses inline styles.
+export function PasswordInput({ value, onChange, autoComplete, className = "", style }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position: "relative", ...style }}>
+      <input
+        type={show ? "text" : "password"}
+        className={className}
+        value={value}
+        onChange={onChange}
+        placeholder="••••••••"
+        autoComplete={autoComplete}
+        style={{ paddingRight: 38 }}
+      />
+      <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Hide password" : "Show password"}
+        style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", padding: 4 }}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          {show ? (<><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-5 0-9.27-3.11-11-8 .82-2.31 2.24-4.28 4.06-5.74M9.9 4.24A10.6 10.6 0 0 1 12 4c5 0 9.27 3.11 11 8-.62 1.75-1.62 3.31-2.88 4.6" /><line x1="1" y1="1" x2="23" y2="23" /></>)
+            : (<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" /><circle cx="12" cy="12" r="3" /></>)}
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 export default function AccountSettingsModal({ username, onSave, onClose }) {
   const [name, setName] = useState(username);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -71,11 +98,11 @@ export default function AccountSettingsModal({ username, onSave, onClose }) {
           <div style={{ height: 1, background: "var(--border)", margin: "18px 0" }} />
 
           <label className="block text-xs text-[color:var(--text-2)] uppercase tracking-[0.04em] mb-1.5">Current password <span style={{ color: "var(--text-3)", textTransform: "none" }}>(only needed to set a new one)</span></label>
-          <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" style={{ marginBottom: 14 }} />
+          <PasswordInput value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} autoComplete="current-password" style={{ marginBottom: 14 }} />
           <label className="block text-xs text-[color:var(--text-2)] uppercase tracking-[0.04em] mb-1.5">New password <span style={{ color: "var(--text-3)", textTransform: "none" }}>(leave blank to keep current)</span></label>
-          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" autoComplete="new-password" style={{ marginBottom: 14 }} />
+          <PasswordInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" style={{ marginBottom: 14 }} />
           <label className="block text-xs text-[color:var(--text-2)] uppercase tracking-[0.04em] mb-1.5">Confirm new password</label>
-          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" autoComplete="new-password" style={{ marginBottom: 14 }} />
+          <PasswordInput value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" style={{ marginBottom: 14 }} />
           {error && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md mt-3.5" style={{ marginBottom: 12 }}>{error}</div>}
           {saved && <div className="bg-[color:var(--green-bg)] text-[color:var(--green)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginBottom: 12 }}>Saved.</div>}
           <div style={{ display: "flex", gap: 8 }}>
