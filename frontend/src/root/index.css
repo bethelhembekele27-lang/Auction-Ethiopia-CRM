@@ -1,5 +1,8 @@
-@import "tailwindcss";
+/* All @import rules must come first — `@import "tailwindcss"` expands into
+   real rules, so a later @import is invalid CSS and Lightning CSS warns
+   (and can drop the rule). Google Fonts goes first. */
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
 
 /* Tailwind v4: map the `dark:` variant to our data-theme attribute
    (toggled from ProfileMenu) instead of the OS prefers-color-scheme. */
