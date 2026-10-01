@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from .models import PartyVerification, NotificationLog,Pickup
 from .notifications import get_sms_sender
-from .visit_rules import appointment_window, window_text, window_text_et, et_date
+from .visit_rules import appointment_window, window_text_et
 
 
 # How long a visitor/guide pass stays valid after an appointment's
@@ -236,13 +236,11 @@ def resolve_pass(token: str) -> dict:
             'visitorName': pu.winnerName, 'phone': pu.phone,
             'company': '', 'auction': pu.auction, 'batch': '',
             'items': pu.itemDescription, 'quantity': pu.quantity,
-            # Single date, no range — but the keys are present and empty so
-            # both branches of resolve_pass return the same shape and the
-            # pass page doesn't need to branch on subjectType.
-            'visitDate': pu.pickupDate.isoformat() if pu.pickupDate else '',
-            'visitDateTo': '',
-            'visitTime': pu.pickupTime.strftime('%H:%M') if pu.pickupTime else '',
-            'visitTimeTo': '',
+            # A pickup has no date or time any more. The keys are kept and
+            # empty so both branches of resolve_pass return the same shape;
+            # PassPage hides the row when the value is falsy.
+            'visitDate': '', 'visitDateTo': '',
+            'visitTime': '', 'visitTimeTo': '',
             'address': pu.address, 'mapsLink': pu.mapsLink,
             'guideName': pu.guideName, 'guidePhone': pu.guidePhone,
         }
@@ -331,38 +329,27 @@ def create_pickup(validated_data: dict, created_by=None):
     return Pickup.objects.create(**data)
 
 
-def _pickup_when(p):
-    """
-    When the winner should collect. A pickup has ONE specific moment (unlike
-    a visit, which spans a range and a daily window), so the time is kept —
-    but the date is rendered in the Ethiopian calendar for the recipient.
-    PFM imports create the Pickup before the date is agreed, so a missing
-    date reads as "date to be confirmed" rather than crashing.
-    """
-    if not p.pickupDate:
-        return "ቀን ይወሰናል"
-    t = p.pickupTime.strftime('%H:%M') if p.pickupTime else ''
-    d = et_date(p.pickupDate)
-    return f"{d} በ{t}" if t else d
-
-
 def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str, str]:
+    """Same shape as build_visitation_messages — winner + guide SMS."""
     visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
     guide_link = f"{FRONTEND_BASE_URL}/g/{verification.guideToken}"
 
     location_bits = [pickup.address] if pickup.address else []
     if pickup.mapsLink:
         location_bits.append(pickup.mapsLink)
-    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋገጠም"
+    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋግጠም"
 
     what = pickup.itemDescription or pickup.auction or "እቃዎቹ"
     qty_suffix = f" (ብዛት: {pickup.quantity})" if pickup.quantity else ""
     ref_line = f"የክፍያ ማመሳከሪያ ቁጥር: {pickup.paymentReference}\n" if pickup.paymentReference else ""
 
+    # A pickup has no scheduled moment any more — the winner may collect at
+    # any time — so the date line is replaced with that in plain terms rather
+    # than being silently dropped, which would leave a gap in the message.
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{_pickup_when(pickup)}\n"
+        f"በማንኛውም ጊዜ መውሰድ ይችላሉ\n"
         f"{ref_line}"
         f"አካባቢ: {location}\n"
         f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
@@ -372,7 +359,6 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ያረጋግጡ\n"
         f"{pickup.winnerName} ({pickup.phone})\n"
         f"የሚሰበስቡት {what}{qty_suffix}\n"
-        f"{_pickup_when(pickup)}\n"
         f"ያረጋግጡ: {guide_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
@@ -428,7 +414,7 @@ def build_pickup_preview(pickup) -> tuple[str, str]:
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"{_pickup_when(pickup)}\n"
+        f"በማንኛውም ጊዜ መውሰድ ይችላሉ\n"
         f"{ref_line}"
         f"አካባቢ: {location}\n"
         f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
@@ -438,7 +424,6 @@ def build_pickup_preview(pickup) -> tuple[str, str]:
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ያረጋግጡ\n"
         f"{pickup.winnerName} ({pickup.phone})\n"
         f"የሚሰበስቡት {what}{qty_suffix}\n"
-        f"{_pickup_when(pickup)}\n"
         f"ያረጋግጡ: {placeholder_link}"
     )
     return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)

@@ -956,7 +956,7 @@ class PickupListCreateView(RoleRequiredAPIView):
     required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
-        qs = Pickup.objects.all().order_by('pickupDate')
+        qs = Pickup.objects.all().order_by('-createdAt')
         status_param = request.query_params.get('status')
         if status_param:
             qs = qs.filter(status=status_param)

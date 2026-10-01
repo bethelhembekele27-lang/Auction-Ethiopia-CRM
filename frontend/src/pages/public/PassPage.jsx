@@ -302,7 +302,10 @@ export default function PassPage({ token }) {
   // a single date and time exactly as before.
   const dateText = s.visitDateTo && s.visitDateTo !== s.visitDate ? `${s.visitDate} – ${s.visitDateTo}` : s.visitDate;
   const timeText = s.visitTimeTo ? `${s.visitTime}–${s.visitTimeTo}` : s.visitTime;
-  const whenValue = [dateText, timeText].filter(Boolean).join(" · ");
+  // Pickups carry no date/time anymore — the backend sends empty strings
+  // for both, so this collapses to "" and DetailRow below simply skips
+  // rendering the row (it already treats a falsy value as "don't show").
+  const whenValue = isPickup ? "" : [dateText, timeText].filter(Boolean).join(" · ");
 
   return (
     <div className={shellCls}>

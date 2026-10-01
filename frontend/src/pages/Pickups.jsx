@@ -1,15 +1,13 @@
 import { useState, useMemo } from "react";
-import { fmtDate, todayISO } from "../utils/format";
 import { VERIFICATION_STAMP } from "../constants/lookups";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { pickups as pickupsApi, pfm as pfmApi } from "../api";
-import { EditIcon, DeleteIcon, PlusIcon, CheckIcon, SendIcon } from "../components/icons";
+import { DeleteIcon, PlusIcon, CheckIcon, SendIcon } from "../components/icons";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RowDetail from "../components/RowDetail";
-import MonthCalendar from "../components/MonthCalendar";
 import AutoCompleteField from "../components/AutoCompleteField";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
 import { getRecentUniqueOptions } from "../utils/recentOptions";
@@ -17,9 +15,11 @@ import { getRecentUniqueOptions } from "../utils/recentOptions";
 const PICKUP_STATUSES = ["Scheduled", "Completed", "Cancelled", "No Show"];
 const PICKUP_STAMP = { Scheduled: "blue", Completed: "green", Cancelled: "gray", "No Show": "red" };
 
+// No pickupDate/pickupTime: a winner collects at any time, so there is no
+// single moment to record.
 export const emptyPickup = {
   id: "", winnerName: "", phone: "", auction: "", itemDescription: "", quantity: "",
-  paymentReference: "", pickupDate: "", pickupTime: "", guideName: "", guidePhone: "",
+  paymentReference: "", guideName: "", guidePhone: "",
   address: "", mapsLink: "", status: "Scheduled",
 };
 
@@ -31,7 +31,6 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [bulkError, setBulkError] = useState("");
-  const [viewMode, setViewMode] = useState("list");
   const [viewing, setViewing] = useState(null);
   const sel = useRowSelection((p) => p.id);
   const { pending, confirm, cancel, run } = useConfirm();
@@ -45,8 +44,8 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   const [confirmNotice, setConfirmNotice] = useState(null);
 
   /* ---------- PFM import ---------- */
-  // Imported winners arrive as Pickups with no date/time (PFM doesn't know
-  // when they'll collect), so the operator fills that in by editing the row.
+  // Imported winners become Pickups with nothing to schedule — the winner
+  // simply collects at any time.
   const [impRows, setImpRows] = useState(null);
   const [impPick, setImpPick] = useState(new Set());
   const [impLoading, setImpLoading] = useState(false);
@@ -72,20 +71,19 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
     finally { setImpLoading(false); }
   }
 
+  // Recency now keys off createdAt — pickupDate no longer exists.
   const phoneOptions = useMemo(
-    () => getRecentUniqueOptions(pickups, (p) => p.phone, (p) => p.pickupDate, 30),
+    () => getRecentUniqueOptions(pickups, (p) => p.phone, (p) => p.createdAt, 30),
     [pickups]
   );
   const auctionOptions = useMemo(
-    () => getRecentUniqueOptions(pickups, (p) => p.auction, (p) => p.pickupDate, 30),
+    () => getRecentUniqueOptions(pickups, (p) => p.auction, (p) => p.createdAt, 30),
     [pickups]
   );
 
   const filtered = fStatus === "All" ? pickups : pickups.filter((p) => p.status === fStatus);
-  // 8.64e15 sorts undated PFM imports to the very end — a plain
-  // new Date(null) would land them in 1970 and put them first.
-  const sorted = [...filtered].sort((a, b) =>
-    new Date(a.pickupDate || 8.64e15) - new Date(b.pickupDate || 8.64e15));
+  // Already ordered newest-first by the backend.
+  const sorted = filtered;
 
   async function openPreview() {
     const rows = sel.selectedFrom(sorted);
@@ -156,7 +154,6 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   function openEdit(p) { setEditing(p.id); setDraft({ ...p }); setSaveError(""); setModalOpen(true); }
 
   async function save() {
-    // Date/time are optional now — a PFM import lands here with neither.
     if (!draft.winnerName || !draft.phone) return;
     if (!isValidEthiopianPhone(draft.phone)) {
       setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
@@ -165,13 +162,7 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
     setSaving(true);
     setSaveError("");
     try {
-      // Empty <input type="date"> yields "", which DRF rejects as blank on a
-      // nullable field — it must be sent as null to clear the value.
-      const payload = {
-        ...draft,
-        pickupDate: draft.pickupDate || null,
-        pickupTime: draft.pickupTime || null,
-      };
+      const payload = { ...draft };
       if (editing) {
         const prev = pickups.find((p) => p.id === editing);
         const updated = await pickupsApi.updatePickup(editing, payload);
@@ -254,10 +245,6 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
         <select className="font-sans text-[13px] px-2.5 py-2 border border-[color:var(--border)] rounded-[5px] bg-[color:var(--panel)] text-[color:var(--text)]" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option value="All">All statuses</option>{PICKUP_STATUSES.map((s) => <option key={s}>{s}</option>)}
         </select>
-        <div className="flex gap-1 ml-2">
-          <button className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] px-2.5 py-[5px] text-xs cursor-pointer" + (viewMode === "list" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : " bg-[color:var(--panel)] text-[color:var(--text)]")} onClick={() => setViewMode("list")}>List</button>
-          <button className={"font-sans text-[13px] font-medium rounded-[5px] border border-[color:var(--border)] px-2.5 py-[5px] text-xs cursor-pointer" + (viewMode === "calendar" ? " bg-[color:var(--brass)] text-white border-[color:var(--brass)]" : " bg-[color:var(--panel)] text-[color:var(--text)]")} onClick={() => setViewMode("calendar")}>Calendar</button>
-        </div>
         {canEdit && <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)] btn-icon-label" style={{ marginLeft: "auto" }} onClick={openNew}>
           <PlusIcon /><span>Schedule pickup</span>
         </button>}
@@ -288,50 +275,37 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
         </div>
       )}
 
-      {viewMode === "calendar" ? (
-        <MonthCalendar
-          items={sorted.map((p) => ({ ...p, date: p.pickupDate }))}
-          getKey={(p) => p.id}
-          getLabel={(p) => `${p.pickupTime} ${p.winnerName}`}
-          onItemClick={(p) => openEdit(p)}
-        />
-      ) : (
-        sorted.length === 0 ? <EmptyState text="No pickups scheduled." /> : (
-          <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-            <div style={{ overflowX: "auto" }}>
-              <table className="w-full border-collapse text-[13px] min-w-[640px]">
-                <thead><tr className="group">
-                  {canEdit && <HeaderCheckbox checked={sel.isAllSelected(sorted)} onChange={() => sel.toggleAll(sorted)} />}
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Winner</th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Item(s)</th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Time</th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Verification</th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
-                </tr></thead>
-                <tbody>
-                  {sorted.map((p) => (
-                    <tr key={p.id} className="group cursor-pointer" onClick={() => setViewing(p)}>
-                      {canEdit && <RowCheckbox checked={sel.isSelected(p)} onChange={() => sel.toggle(p)} label={`Select ${p.id}`} />}
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{p.id}</td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.winnerName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.phone}</div></td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.itemDescription || p.auction || "—"}</td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(p.pickupDate)}</td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{p.pickupTime}</td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.guideName || "—"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.guidePhone}</div></td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                        <Stamp text={p.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[p.verificationStatus] || "gray"} />
-                      </td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={p.status} kind={PICKUP_STAMP[p.status]} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      {sorted.length === 0 ? <EmptyState text="No pickups scheduled." /> : (
+        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+          <div style={{ overflowX: "auto" }}>
+            <table className="w-full border-collapse text-[13px] min-w-[640px]">
+              <thead><tr className="group">
+                {canEdit && <HeaderCheckbox checked={sel.isAllSelected(sorted)} onChange={() => sel.toggleAll(sorted)} />}
+                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th>
+                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Winner</th>
+                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Item(s)</th>
+                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th>
+                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Verification</th>
+                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
+              </tr></thead>
+              <tbody>
+                {sorted.map((p) => (
+                  <tr key={p.id} className="group cursor-pointer" onClick={() => setViewing(p)}>
+                    {canEdit && <RowCheckbox checked={sel.isSelected(p)} onChange={() => sel.toggle(p)} label={`Select ${p.id}`} />}
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{p.id}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.winnerName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.phone}</div></td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.itemDescription || p.auction || "—"}</td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.guideName || "—"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.guidePhone}</div></td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                      <Stamp text={p.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[p.verificationStatus] || "gray"} />
+                    </td>
+                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={p.status} kind={PICKUP_STAMP[p.status]} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )
+        </div>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "Schedule pickup"} wide>
@@ -345,8 +319,6 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
           </Field>
           <Field label="Quantity (optional)"><input className={inputCls} value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} /></Field>
           <Field label="Payment reference (optional)"><input className={inputCls} value={draft.paymentReference} onChange={(e) => setDraft({ ...draft, paymentReference: e.target.value })} /></Field>
-          <Field label="Pickup date"><input type="date" className={inputCls} value={draft.pickupDate} onChange={(e) => setDraft({ ...draft, pickupDate: e.target.value })} /></Field>
-          <Field label="Pickup time"><input type="time" className={inputCls} value={draft.pickupTime} onChange={(e) => setDraft({ ...draft, pickupTime: e.target.value })} /></Field>
           <Field label="Guide name (optional)"><input className={inputCls} value={draft.guideName} onChange={(e) => setDraft({ ...draft, guideName: e.target.value })} /></Field>
           <Field label="Guide phone (optional)"><input className={inputCls} value={draft.guidePhone} onChange={(e) => setDraft({ ...draft, guidePhone: e.target.value })} /></Field>
           <Field label="Address (optional)"><input className={inputCls} value={draft.address} onChange={(e) => setDraft({ ...draft, address: e.target.value })} /></Field>
@@ -405,8 +377,6 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
       <RowDetail title={viewing ? `${viewing.id}` : ""} fields={viewing && [
           ["Winner", viewing.winnerName], ["Phone", viewing.phone], ["Auction", viewing.auction],
           ["Payment ref", viewing.paymentReference],
-          ["Date", viewing.pickupDate && fmtDate(viewing.pickupDate)],
-          ["Time", viewing.pickupTime],
           ["Guide", viewing.guideName], ["Guide phone", viewing.guidePhone],
           ["Address", viewing.address], ["Map link", viewing.mapsLink],
           ["Quantity", viewing.quantity], ["Verification", viewing.verificationStatus],
