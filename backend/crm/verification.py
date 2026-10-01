@@ -343,13 +343,11 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
     qty_suffix = f" (ብዛት: {pickup.quantity})" if pickup.quantity else ""
     ref_line = f"የክፍያ ማመሳከሪያ ቁጥር: {pickup.paymentReference}\n" if pickup.paymentReference else ""
 
-    # A pickup has no scheduled moment any more — the winner may collect at
-    # any time — so the date line is replaced with that in plain terms rather
-    # than being silently dropped, which would leave a gap in the message.
+    # A pickup has no scheduled moment any more, so there is no date line at
+    # all — the item, payment reference and location carry the message.
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"በማንኛውም ጊዜ መውሰድ ይችላሉ\n"
         f"{ref_line}"
         f"አካባቢ: {location}\n"
         f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
@@ -414,7 +412,6 @@ def build_pickup_preview(pickup) -> tuple[str, str]:
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
         f"{what}{qty_suffix}\n"
-        f"በማንኛውም ጊዜ መውሰድ ይችላሉ\n"
         f"{ref_line}"
         f"አካባቢ: {location}\n"
         f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
