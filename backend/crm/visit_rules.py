@@ -83,3 +83,39 @@ def window_text(w, daily='daily'):
     if d and t:
         return f"{d} ({daily} {t})"
     return d or t or '-'
+
+
+# Ethiopian (Ge'ez) calendar support for outbound SMS. The operator-facing
+# pages and the public pass page stay Gregorian — this is only for text going
+# to visitors and winners, who read dates in their own calendar.
+_ET_MONTHS = ["መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት",
+              "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜን"]
+
+
+def et_date(value):
+    """
+    Gregorian date (or 'YYYY-MM-DD' string) -> '20 መስከረም 2019'.
+
+    JDN-based conversion, so it needs no lookup table. All twelve months are
+    30 days and ጳጉሜን (the 13th) has 5, or 6 in a leap year — which makes the
+    year 365/366 days and keeps 1 መስከረም landing on 11 or 12 September.
+
+    Hand-typed text (e.g. 'mid August', which dateFrom/dateTo still allow) is
+    returned unchanged rather than guessed at.
+    """
+    d = value if isinstance(value, date) else _iso(str(value or ''))
+    if d is None:
+        return str(value or '')
+    jdn = d.toordinal() + 1721425
+    r = (jdn - 1723856) % 1461
+    n = r % 365 + 365 * (r // 1460)
+    year = 4 * ((jdn - 1723856) // 1461) + r // 365 - r // 1460
+    return f"{n % 30 + 1} {_ET_MONTHS[n // 30]} {year}"
+
+
+def window_text_et(w):
+    """Date range only (no daily hours), in the Ethiopian calendar."""
+    a, b = et_date(w['dateFrom']), et_date(w['dateTo'])
+    if a and b and a != b:
+        return f"{a} - {b}"
+    return a or b or '-'

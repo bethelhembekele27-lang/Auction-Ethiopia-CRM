@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from .models import PartyVerification, NotificationLog,Pickup
 from .notifications import get_sms_sender
-from .visit_rules import appointment_window, window_text
+from .visit_rules import appointment_window, window_text, window_text_et, et_date
 
 
 # How long a visitor/guide pass stays valid after an appointment's
@@ -111,7 +111,7 @@ def build_visitation_messages(appointment, verification: PartyVerification) -> t
 
     what = appointment.batch or appointment.auction or "እቃው"
     qty_suffix = f" (ብዛት: {appointment.quantity})" if appointment.quantity else ""
-    window = window_text(appointment_window(appointment), 'በየቀኑ')
+    window = window_text_et(appointment_window(appointment))
 
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - ጉብኝት ተረጋግጧል\n"
@@ -333,14 +333,17 @@ def create_pickup(validated_data: dict, created_by=None):
 
 def _pickup_when(p):
     """
-    "Date to be confirmed" for a pickup with no date yet. PFM imports create
-    the Pickup as soon as a winner is confirmed, but PFM doesn't know when
-    they'll collect — so the SMS must not print "None በNone" or crash.
+    When the winner should collect. A pickup has ONE specific moment (unlike
+    a visit, which spans a range and a daily window), so the time is kept —
+    but the date is rendered in the Ethiopian calendar for the recipient.
+    PFM imports create the Pickup before the date is agreed, so a missing
+    date reads as "date to be confirmed" rather than crashing.
     """
     if not p.pickupDate:
         return "ቀን ይወሰናል"
     t = p.pickupTime.strftime('%H:%M') if p.pickupTime else ''
-    return f"{p.pickupDate} በ{t}" if t else str(p.pickupDate)
+    d = et_date(p.pickupDate)
+    return f"{d} በ{t}" if t else d
 
 
 def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str, str]:
@@ -354,7 +357,7 @@ def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str,
 
     what = pickup.itemDescription or pickup.auction or "እቃዎቹ"
     qty_suffix = f" (ብዛት: {pickup.quantity})" if pickup.quantity else ""
-    ref_line = f"ማጣቀሻ: {pickup.paymentReference}\n" if pickup.paymentReference else ""
+    ref_line = f"የክፍያ ማመሳከሪያ ቁጥር: {pickup.paymentReference}\n" if pickup.paymentReference else ""
 
     visitor_message = (
         f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
@@ -389,7 +392,7 @@ def build_visitation_preview(appointment) -> tuple[str, str]:
 
     what = appointment.batch or appointment.auction or "እቃው"
     qty_suffix = f" (ብዛት: {appointment.quantity})" if appointment.quantity else ""
-    window = window_text(appointment_window(appointment), 'በየቀኑ')
+    window = window_text_et(appointment_window(appointment))
     placeholder_link = "[ማለፊያ ሲላክ ይፈጠራል]"
 
     visitor_message = (
@@ -419,7 +422,7 @@ def build_pickup_preview(pickup) -> tuple[str, str]:
 
     what = pickup.itemDescription or pickup.auction or "እቃዎቹ"
     qty_suffix = f" (ብዛት: {pickup.quantity})" if pickup.quantity else ""
-    ref_line = f"ማጣቀሻ: {pickup.paymentReference}\n" if pickup.paymentReference else ""
+    ref_line = f"የክፍያ ማመሳከሪያ ቁጥር: {pickup.paymentReference}\n" if pickup.paymentReference else ""
     placeholder_link = "[ማለፊያ ሲላክ ይፈጠራል]"
 
     visitor_message = (
