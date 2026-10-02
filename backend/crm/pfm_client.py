@@ -111,3 +111,4 @@ def normalize(x):
         "amountPaid": _dec(x.get("amountPaid")),
         "verifiedAt": parse_datetime(x.get("verifiedAt") or ""),
     }
+
