@@ -51,16 +51,16 @@ def fetch_verified_winners(since=""):
                 params["since"] = since
             if cursor:
                 params["cursor"] = cursor
-             r = requests.get(f"{base}/api/export/v1/verified-winners/", params=params,
+            r = requests.get(f"{base}/api/export/v1/verified-winners/", params=params,
                              headers={"Authorization": f"Bearer {key}"}, timeout=60)
-             if r.status_code == 401:
-                 return False, "PFM rejected the API key (401). Check PFM_API_KEY."
-             if r.status_code >= 400:
-                 try:
-                     detail = r.json().get("error", "")
-                 except ValueError:
-                     detail = ""
-                 return False, f"PFM returned HTTP {r.status_code}. {detail}".strip()
+            if r.status_code == 401:
+                return False, "PFM rejected the API key (401). Check PFM_API_KEY."
+            if r.status_code >= 400:
+                try:
+                    detail = r.json().get("error", "")
+                except ValueError:
+                    detail = ""
+                return False, f"PFM returned HTTP {r.status_code}. {detail}".strip()
             data = r.json()
             if data.get("version") != 1:
                 return False, f"Unsupported PFM export version: {data.get('version')}."
