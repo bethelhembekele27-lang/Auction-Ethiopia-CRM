@@ -1535,6 +1535,7 @@ class PfmImportView(RoleRequiredAPIView):
                     'winnerName': row['bidderName'] or row['companyName'], 'phone': row['phone'],
                     'auction': row['auction'], 'itemDescription': row['lotsSummary'],
                     'paymentReference': row['invoiceNumber'],
+                    'quantity': row['quantity'], 'address': row['location'],
                 }, created_by=_employee_for(request.user))
                 PfmWinner.objects.create(
                     invoiceNumber=row['invoiceNumber'], pickup=pickup, status='Scheduled', importedBy=request.user,

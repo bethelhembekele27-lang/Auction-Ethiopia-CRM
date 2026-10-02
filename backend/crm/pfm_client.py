@@ -51,12 +51,16 @@ def fetch_verified_winners(since=""):
                 params["since"] = since
             if cursor:
                 params["cursor"] = cursor
-            r = requests.get(f"{base}/api/export/v1/verified-winners/", params=params,
-                             headers={"Authorization": f"Bearer {key}"}, timeout=20)
-            if r.status_code == 401:
-                return False, "PFM rejected the API key (401)."
-            if r.status_code >= 400:
-                return False, f"PFM returned HTTP {r.status_code}."
+             r = requests.get(f"{base}/api/export/v1/verified-winners/", params=params,
+                             headers={"Authorization": f"Bearer {key}"}, timeout=60)
+             if r.status_code == 401:
+                 return False, "PFM rejected the API key (401). Check PFM_API_KEY."
+             if r.status_code >= 400:
+                 try:
+                     detail = r.json().get("error", "")
+                 except ValueError:
+                     detail = ""
+                 return False, f"PFM returned HTTP {r.status_code}. {detail}".strip()
             data = r.json()
             if data.get("version") != 1:
                 return False, f"Unsupported PFM export version: {data.get('version')}."
@@ -90,6 +94,8 @@ def normalize(x):
     summary = "; ".join(
         " ".join(p for p in [l.get("lotNumber", ""), l.get("description", "")] if p) for l in lots
     )[:1000]
+    qty = ", ".join(str(l.get("quantity", "")).strip() for l in lots if str(l.get("quantity", "")).strip())[:50]
+    loc = next((str(l.get("location", "")).strip() for l in lots if str(l.get("location", "")).strip()), "")[:300]
     return {
         "invoiceNumber": str(x.get("invoiceNumber", "")).strip(),
         "bidderName": str(x.get("bidderName", "")).strip(),
@@ -100,6 +106,8 @@ def normalize(x):
         "auction": str(x.get("auctionName", "")).strip(),
         "lots": lots,
         "lotsSummary": summary,
+        "quantity": qty,
+        "location": loc,
         "amountPaid": _dec(x.get("amountPaid")),
         "verifiedAt": parse_datetime(x.get("verifiedAt") or ""),
     }
