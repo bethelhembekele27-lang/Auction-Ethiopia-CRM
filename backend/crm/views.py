@@ -1546,18 +1546,3 @@ class PfmImportView(RoleRequiredAPIView):
             log_audit(request, 'Import verified winners', '—', f'{len(imported)} imported', ', '.join(imported)[:500])
         return Response({'imported': imported, 'skipped': skipped})
 
-
-class PfmDebugView(RoleRequiredAPIView):
-    required_roles = ('administrator',)
-
-    def get(self, request):
-        from decouple import config
-        k = config("PFM_API_KEY", default="")
-        return Response({
-            "base_url": config("PFM_BASE_URL", default=""),
-            "key_length": len(k),
-            "key_starts": k[:6],
-            "key_ends": k[-4:],
-            "has_whitespace": k != k.strip(),
-        })
-

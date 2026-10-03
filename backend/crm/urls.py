@@ -6,7 +6,7 @@ from .views import (
     RoleDeleteView,ChangePasswordView,UpdateUsernameView,PushSubscribeView,PushUnsubscribeView, VapidPublicKeyView,TriggerFollowupRemindersView,PassResolveView,PassVerifyView,
     PickupListCreateView, PickupDetailView, PickupSendConfirmationView, PickupPreviewConfirmationView, PickupBulkSendConfirmationView,
     HealthView, SavedLocationView,
-    PfmPreviewView, PfmImportView, PfmDebugView,
+    PfmPreviewView, PfmImportView,
 )
 
 urlpatterns = [
@@ -16,7 +16,6 @@ urlpatterns = [
     # separate winners listing/scheduling API.
     path('pfm/preview/', PfmPreviewView.as_view(), name='pfm-preview'),
     path('pfm/import/', PfmImportView.as_view(), name='pfm-import'),
-    path('pfm/debug/', PfmDebugView.as_view(), name='pfm-debug'),
 
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
