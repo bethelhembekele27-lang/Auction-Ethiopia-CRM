@@ -33,3 +33,4 @@ class BearerTokenAuthentication(TokenAuthentication):
             token.delete()
             raise AuthenticationFailed('Session expired. Please log in again.')
         return user, token
+    

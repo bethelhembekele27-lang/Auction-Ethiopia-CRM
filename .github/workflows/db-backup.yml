@@ -1,0 +1,12 @@
+name: Nightly DB backup
+on:
+  schedule: [{ cron: "0 1 * * *" }]
+  workflow_dispatch: {}
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: pg_dump "${{ secrets.NEON_DATABASE_URL }}" -Fc -f backup.dump
+      - uses: actions/upload-artifact@v4
+        with: { name: db-backup, path: backup.dump, retention-days: 14 }

@@ -194,6 +194,9 @@ class Inquiry(models.Model):
     createdAt = models.DateTimeField(auto_now_add=True)
     updatedAt = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [models.Index(fields=['phone']), models.Index(fields=['-dateTime'])]
+
     def save(self, *args, **kwargs):
         if not self.publicId:
             self.publicId = next_public_id(Inquiry, 'INQ')
@@ -247,6 +250,9 @@ class Followup(models.Model):
     company = models.CharField(max_length=200, blank=True, default='')
     batch = models.CharField(max_length=100, blank=True, default='')
     guideName = models.CharField(max_length=150, blank=True, default='')
+
+    class Meta:
+        indexes = [models.Index(fields=['status', 'date'])]
 
     def save(self, *args, **kwargs):
         if not self.publicId:
@@ -339,6 +345,9 @@ class Appointment(models.Model):
     isCustom = models.BooleanField(default=False)
 
     createdAt = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['-createdAt'])]
 
     def save(self, *args, **kwargs):
         if not self.publicId:
