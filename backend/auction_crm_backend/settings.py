@@ -194,3 +194,12 @@ STORAGES = {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
+SENTRY_DSN = config("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        send_default_pii=False,   # don't send phone numbers/usernames
+        traces_sample_rate=0.0,
+        environment=config("SENTRY_ENV", default="production"),
+    )
