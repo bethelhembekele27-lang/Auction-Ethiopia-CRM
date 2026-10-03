@@ -52,9 +52,18 @@ def fetch_verified_winners(since=""):
             if cursor:
                 params["cursor"] = cursor
             r = requests.get(f"{base}/api/export/v1/verified-winners/", params=params,
-                             headers={"Authorization": f"Bearer {key}"}, timeout=60)
+                             headers={"Authorization": f"Bearer {key}",
+                                      "User-Agent": "AuctionEthiopia-CRM/1.0",
+                                      "Accept": "application/json"},
+                             timeout=60, allow_redirects=False)
             if r.status_code == 401:
-                return False, "PFM rejected the API key (401). Check PFM_API_KEY."
+                try:
+                    reason = r.json().get("error", "")
+                except ValueError:
+                    reason = ""
+                return False, f"PFM rejected the API key (401). {reason}".strip()
+            if 300 <= r.status_code < 400:
+                return False, f"PFM redirected to {r.headers.get('Location', '?')}; check PFM_BASE_URL."
             if r.status_code >= 400:
                 try:
                     detail = r.json().get("error", "")
