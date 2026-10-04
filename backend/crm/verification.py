@@ -279,6 +279,8 @@ def verify_token(scanned: str, own_token: str, own_role: str, ip: str | None = N
         raise VerificationError("Your session link is invalid — request a new confirmation.")
     if v.expiresAt < timezone.now():
         raise VerificationError("This pass has expired.")
+    if v.failedAttempts >= 10:
+        raise VerificationError("Too many wrong attempts. Ask the call center to resend the confirmation.")
     if own_role not in ('visitor', 'guide'):
         raise VerificationError("Invalid role.")
 
@@ -289,6 +291,8 @@ def verify_token(scanned: str, own_token: str, own_role: str, ip: str | None = N
     scanned = (scanned or '').strip()
     matched = scanned == other_token or (len(scanned) == 6 and scanned == other_code)
     if not matched:
+        v.failedAttempts += 1
+        v.save(update_fields=['failedAttempts'])
         raise VerificationError("That code doesn't match — ask them to show it again.")
 
     now = timezone.now()

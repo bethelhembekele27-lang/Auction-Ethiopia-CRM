@@ -116,6 +116,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # Render terminates TLS at its proxy, so without this the
+    # login throttle sees every request as coming from the same
+    # proxy IP instead of the real client.
+    "NUM_PROXIES": 1,
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "EXCEPTION_HANDLER": "crm.exceptions.api_exception_handler",

@@ -561,6 +561,11 @@ class PartyVerification(models.Model):
 
     expiresAt = models.DateTimeField()
     createdAt = models.DateTimeField(auto_now_add=True)
+    # Brute-force guard for the 6-digit fallback codes — see
+    # verify_token() in crm/verification.py. Resets to 0 whenever a
+    # fresh confirmation is sent (create_verification deletes the old
+    # rows), so a legitimate party is never permanently locked out.
+    failedAttempts = models.IntegerField(default=0)
 
     def __str__(self):
         return f"PartyVerification({self.subjectType}:{self.subjectId})"

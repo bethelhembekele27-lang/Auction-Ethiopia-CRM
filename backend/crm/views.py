@@ -38,7 +38,9 @@ from django.contrib.auth.models import User
 from rest_framework.parsers import MultiPartParser
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from django.core.cache import cache
 import hmac
+import logging
 import os
 from .push import send_push_to_user
 from .pfm_client import fetch_verified_winners
@@ -51,6 +53,9 @@ from .verification import (
 )
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
+
+logger = logging.getLogger(__name__)
+
 # =============================================================================
 # Shared helpers
 # =============================================================================
@@ -145,10 +150,22 @@ class LoginView(RoleRequiredAPIView):
     throttle_classes = [LoginThrottle]
 
     def post(self, request):
+        # Per-username lockout: 5 failed attempts in 15 minutes
+        # blocks that username specifically. The default cache is
+        # per-process memory, which is fine for a single instance.
+        uname = str(request.data.get('username', '')).strip().lower()
+        key = f'loginfail:{uname}'
+        if cache.get(key, 0) >= 5:
+            return Response({'message': 'Too many failed attempts. Try again in 15 minutes.'}, status=429)
+
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
+            cache.set(key, cache.get(key, 0) + 1, 900)
             first_error = next(iter(serializer.errors.values()))[0]
             return Response({'message': str(first_error)}, status=http_status.HTTP_401_UNAUTHORIZED)
+
+        # Successful login clears the failure counter.
+        cache.delete(key)
 
         user = serializer.validated_data['user']
         employee = serializer.validated_data['employee']
@@ -1486,14 +1503,18 @@ class PfmPreviewView(RoleRequiredAPIView):
     required_roles = PFM_ROLES
 
     def post(self, request):
-        ok, result = fetch_verified_winners(str(request.data.get('since', '')).strip())
-        if not ok:
-            return Response({'message': result}, status=http_status.HTTP_502_BAD_GATEWAY)
-        out = []
-        for row in result:
-            state, reason = _pfm_row_state(row)
-            out.append(_pfm_public(row, state, reason))
-        return Response({'rows': out})
+        try:
+            ok, result = fetch_verified_winners(str(request.data.get('since', '')).strip())
+            if not ok:
+                return Response({'message': result}, status=http_status.HTTP_502_BAD_GATEWAY)
+            out = []
+            for row in result:
+                state, reason = _pfm_row_state(row)
+                out.append(_pfm_public(row, state, reason))
+            return Response({'rows': out})
+        except Exception as exc:
+            logger.exception("PFM preview failed: %s", exc)
+            return Response({'message': 'Unexpected error, check logs.'}, status=500)
 
 
 class PfmImportView(RoleRequiredAPIView):
@@ -1512,36 +1533,40 @@ class PfmImportView(RoleRequiredAPIView):
     required_roles = PFM_ROLES
 
     def post(self, request):
-        wanted = request.data.get('invoiceNumbers', [])
-        if not isinstance(wanted, list) or not wanted:
-            return Response({'message': 'invoiceNumbers must be a non-empty list.'}, status=http_status.HTTP_400_BAD_REQUEST)
-        ok, result = fetch_verified_winners('')
-        if not ok:
-            return Response({'message': result}, status=http_status.HTTP_502_BAD_GATEWAY)
-        wanted = set(wanted)
-        imported, skipped = [], []
-        for row in result:
-            if row['invoiceNumber'] not in wanted:
-                continue
-            state, reason = _pfm_row_state(row)
-            if state != 'new':
-                skipped.append({'invoiceNumber': row['invoiceNumber'], 'reason': reason})
-                continue
-            # Both writes are one unit of work: a PfmWinner row without its
-            # Pickup (or the reverse) would leave the winner uncollectable, or
-            # a Pickup nothing can trace back to PFM.
-            with transaction.atomic():
-                pickup = create_pickup({
-                    'winnerName': row['bidderName'] or row['companyName'], 'phone': row['phone'],
-                    'auction': row['auction'], 'itemDescription': row['lotsSummary'],
-                    'quantity': row['quantity'], 'address': row['location'],
-                }, created_by=_employee_for(request.user))
-                PfmWinner.objects.create(
-                    invoiceNumber=row['invoiceNumber'], pickup=pickup, status='Scheduled', importedBy=request.user,
-                    **{k: row[k] for k in ('bidderName', 'bidderNameAmharic', 'companyName', 'phone', 'email',
-                                           'auction', 'lots', 'lotsSummary', 'amountPaid', 'verifiedAt')})
-            imported.append(row['invoiceNumber'])
-        if imported:
-            log_audit(request, 'Import verified winners', '—', f'{len(imported)} imported', ', '.join(imported)[:500])
-        return Response({'imported': imported, 'skipped': skipped})
+        try:
+            wanted = request.data.get('invoiceNumbers', [])
+            if not isinstance(wanted, list) or not wanted:
+                return Response({'message': 'invoiceNumbers must be a non-empty list.'}, status=http_status.HTTP_400_BAD_REQUEST)
+            ok, result = fetch_verified_winners('')
+            if not ok:
+                return Response({'message': result}, status=http_status.HTTP_502_BAD_GATEWAY)
+            wanted = set(wanted)
+            imported, skipped = [], []
+            for row in result:
+                if row['invoiceNumber'] not in wanted:
+                    continue
+                state, reason = _pfm_row_state(row)
+                if state != 'new':
+                    skipped.append({'invoiceNumber': row['invoiceNumber'], 'reason': reason})
+                    continue
+                # Both writes are one unit of work: a PfmWinner row without its
+                # Pickup (or the reverse) would leave the winner uncollectable, or
+                # a Pickup nothing can trace back to PFM.
+                with transaction.atomic():
+                    pickup = create_pickup({
+                        'winnerName': row['bidderName'] or row['companyName'], 'phone': row['phone'],
+                        'auction': row['auction'], 'itemDescription': row['lotsSummary'],
+                        'quantity': row['quantity'], 'address': row['location'],
+                    }, created_by=_employee_for(request.user))
+                    PfmWinner.objects.create(
+                        invoiceNumber=row['invoiceNumber'], pickup=pickup, status='Scheduled', importedBy=request.user,
+                        **{k: row[k] for k in ('bidderName', 'bidderNameAmharic', 'companyName', 'phone', 'email',
+                                               'auction', 'lots', 'lotsSummary', 'amountPaid', 'verifiedAt')})
+                imported.append(row['invoiceNumber'])
+            if imported:
+                log_audit(request, 'Import verified winners', '—', f'{len(imported)} imported', ', '.join(imported)[:500])
+            return Response({'imported': imported, 'skipped': skipped})
+        except Exception as exc:
+            logger.exception("PFM import failed: %s", exc)
+            return Response({'message': 'Unexpected error, check logs.'}, status=500)
 

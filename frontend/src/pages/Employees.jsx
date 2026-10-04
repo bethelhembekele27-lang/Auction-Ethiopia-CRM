@@ -110,7 +110,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
     if (rows.length === 1) openResetPassword(rows[0]);
   }
   async function saveResetPassword() {
-    if (!resetPwValue || resetPwValue.length < 6) { setResetPwError("Password must be at least 6 characters."); return; }
+    if (!resetPwValue || resetPwValue.length < 10) { setResetPwError("Password must be at least 10 characters."); return; }
     if (resetPwValue !== resetPwConfirm) { setResetPwError("Passwords don't match."); return; }
     setResetPwSaving(true);
     setResetPwError("");

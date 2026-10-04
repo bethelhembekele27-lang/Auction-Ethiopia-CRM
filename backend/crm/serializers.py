@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from django.utils.text import slugify
 from rest_framework import serializers
@@ -120,7 +121,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 class EmployeeCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=150)
     username = serializers.CharField(max_length=150)
-    password = serializers.CharField(write_only=True, min_length=6)
+    password = serializers.CharField(write_only=True, min_length=10)
     role = serializers.CharField()
     email = serializers.EmailField(required=False, allow_blank=True)
 
@@ -162,6 +163,10 @@ class EmployeeCreateSerializer(serializers.Serializer):
             return Role.objects.get(key=value)
         except Role.DoesNotExist:
             raise serializers.ValidationError("Invalid role.")
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value
 
     def create(self, validated_data):
         role = validated_data['role']
@@ -552,7 +557,7 @@ class ChangePasswordSerializer(serializers.Serializer):
     with nothing but a valid token.
     """
     oldPassword = serializers.CharField(write_only=True)
-    newPassword = serializers.CharField(write_only=True, min_length=6)
+    newPassword = serializers.CharField(write_only=True, min_length=10)
 
     def validate(self, data):
         user = self.context['request'].user
@@ -561,6 +566,10 @@ class ChangePasswordSerializer(serializers.Serializer):
         if data['oldPassword'] == data['newPassword']:
             raise serializers.ValidationError({'newPassword': 'New password must be different from your current password.'})
         return data
+
+    def validate_newPassword(self, value):
+        validate_password(value)
+        return value
 
     def save(self, **kwargs):
         user = self.context['request'].user
@@ -608,7 +617,11 @@ class AdminResetPasswordSerializer(serializers.Serializer):
     "I forgot it" / "the employee is locked out" recovery path an admin
     uses on someone else's account, so there is no old password to check.
     """
-    newPassword = serializers.CharField(write_only=True, min_length=6)
+    newPassword = serializers.CharField(write_only=True, min_length=10)
+
+    def validate_newPassword(self, value):
+        validate_password(value)
+        return value
 
     def save(self, **kwargs):
         employee = self.context['employee']
