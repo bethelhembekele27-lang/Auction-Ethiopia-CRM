@@ -39,7 +39,7 @@ export default function Header({
             <div
               key={n.key}
               className={
-                "flex items-center whitespace-nowrap px-2 py-1.5 rounded-[5px] text-[13px] font-medium cursor-pointer border-b-2 transition-colors duration-[120ms] hover:bg-[color:var(--paper)] hover:text-[color:var(--text)] " +
+                "flex items-center whitespace-nowrap px-2.5 py-1.5 rounded-[5px] text-[13.5px] font-medium cursor-pointer border-b-2 transition-colors duration-[120ms] hover:bg-[color:var(--paper)] hover:text-[color:var(--text)] " +
                 (page === n.key
                   ? "text-[color:var(--brass)] border-b-[color:var(--brass)]"
                   : "text-[color:var(--text-2)] border-transparent")
