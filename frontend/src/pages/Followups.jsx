@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import Pagination from "../components/Pagination";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RowDetail from "../components/RowDetail";
@@ -63,6 +64,15 @@ export default function Followups({
   const sorted = [...filtered].sort(
     (a, b) => new Date(a.date) - new Date(b.date)
   );
+
+  const PAGE_SIZE = 30;
+  const [pageNum, setPageNum] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(pageNum, totalPages);
+  const pageRows = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setPageNum(1); }, [fStatus, fCompany, fGuide]);
 
   function openEdit(f) {
     setEditing(f.id);
@@ -321,119 +331,122 @@ export default function Followups({
       {sorted.length === 0 ? (
         <EmptyState text="No follow-ups scheduled." />
       ) : (
-        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-          <div style={{ overflowX: "auto" }}>
-            <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead>
-                <tr className="group">
-                  {canEdit && (
-                    <HeaderCheckbox
-                      checked={sel.isAllSelected(sorted)}
-                      onChange={() => sel.toggleAll(sorted)}
-                    />
-                  )}
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    ID
-                  </th>
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Caller
-                  </th>
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Company / Batch
-                  </th>
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Guide
-                  </th>
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Follow-up date
-                  </th>
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Operator
-                  </th>
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Reminder
-                  </th>
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {sorted.map((f) => (
-                  <tr key={f.id} className="group cursor-pointer" onClick={() => setViewing(f)}>
+        <>
+          <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full border-collapse text-[13px] min-w-[640px]">
+                <thead>
+                  <tr className="group">
                     {canEdit && (
-                      <RowCheckbox
-                        checked={sel.isSelected(f)}
-                        onChange={() => sel.toggle(f)}
-                        label={`Select ${f.id}`}
+                      <HeaderCheckbox
+                        checked={sel.isAllSelected(pageRows)}
+                        onChange={() => sel.toggleAll(pageRows)}
                       />
                     )}
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">
-                      {f.id}
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      ID
+                    </th>
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {f.callerName || "Unknown caller"}
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: "var(--text-3)"
-                        }}
-                      >
-                        {f.inquiryId}
-                      </div>
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Caller
+                    </th>
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {f.company || "—"}
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: "var(--text-3)"
-                        }}
-                      >
-                        {f.batch || ""}
-                      </div>
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Company / Batch
+                    </th>
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {f.guideName || "—"}
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Guide
+                    </th>
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">
-                      {fmtDate(f.date)}
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Follow-up date
+                    </th>
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {f.assignedOperator}
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Operator
+                    </th>
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {f.reminder ? "Yes" : "No"}
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Reminder
+                    </th>
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      <Stamp
-                        text={f.status}
-                        kind={FOLLOWUP_STAMP[f.status] || "amber"}
-                      />
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Status
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+
+                <tbody>
+                  {pageRows.map((f) => (
+                    <tr key={f.id} className="group cursor-pointer" onClick={() => setViewing(f)}>
+                      {canEdit && (
+                        <RowCheckbox
+                          checked={sel.isSelected(f)}
+                          onChange={() => sel.toggle(f)}
+                          label={`Select ${f.id}`}
+                        />
+                      )}
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">
+                        {f.id}
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        {f.callerName || "Unknown caller"}
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            color: "var(--text-3)"
+                          }}
+                        >
+                          {f.inquiryId}
+                        </div>
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        {f.company || "—"}
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            color: "var(--text-3)"
+                          }}
+                        >
+                          {f.batch || ""}
+                        </div>
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        {f.guideName || "—"}
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">
+                        {fmtDate(f.date)}
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        {f.assignedOperator}
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        {f.reminder ? "Yes" : "No"}
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        <Stamp
+                          text={f.status}
+                          kind={FOLLOWUP_STAMP[f.status] || "amber"}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+          <Pagination page={safePage} totalPages={totalPages} total={sorted.length} onChange={setPageNum} />
+        </>
       )}
 
       <Modal

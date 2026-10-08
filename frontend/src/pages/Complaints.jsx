@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import Pagination from "../components/Pagination";
 import { COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITIES, PRIORITY_STAMP } from "../constants/lookups";
 import { todayISO, displayName, fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
@@ -74,6 +75,15 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
   const sorted = [...filtered].sort(
     (a, b) => new Date(b.date) - new Date(a.date)
   );
+
+  const PAGE_SIZE = 30;
+  const [pageNum, setPageNum] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(pageNum, totalPages);
+  const pageRows = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Reset to page 1 whenever the status filter changes
+  useEffect(() => { setPageNum(1); }, [fStatus]);
 
   function openNew() {
     setEditing(null);
@@ -238,93 +248,96 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
       {sorted.length === 0 ? (
         <EmptyState text="No complaints found." />
       ) : (
-        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-          <div style={{ overflowX: "auto" }}>
-            <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead>
-                <tr className="group">
-                  {canEdit && (
-                    <HeaderCheckbox
-                      checked={sel.isAllSelected(sorted)}
-                      onChange={() => sel.toggleAll(sorted)}
-                    />
-                  )}
-
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    ID
-                  </th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Caller
-                  </th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Category
-                  </th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Department
-                  </th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Priority
-                  </th>
-                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {sorted.map((c) => (
-                  <tr key={c.id} className="group cursor-pointer" onClick={() => setViewing(c)}>
+        <>
+          <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full border-collapse text-[13px] min-w-[640px]">
+                <thead>
+                  <tr className="group">
                     {canEdit && (
-                      <RowCheckbox
-                        checked={sel.isSelected(c)}
-                        onChange={() => sel.toggle(c)}
-                        label={`Select ${c.id}`}
+                      <HeaderCheckbox
+                        checked={sel.isAllSelected(pageRows)}
+                        onChange={() => sel.toggleAll(pageRows)}
                       />
                     )}
 
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">
-                      {c.id}
-                    </td>
-
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {c.callerName || "Unknown caller"}
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: "var(--text-3)",
-                        }}
-                      >
-                        {c.phone}
-                      </div>
-                    </td>
-
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {c.category}
-                    </td>
-
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      {c.department}
-                    </td>
-
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      <Stamp
-                        text={c.priority}
-                        kind={PRIORITY_STAMP[c.priority]}
-                      />
-                    </td>
-
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      <Stamp
-                        text={c.status}
-                        kind={c.status === "Resolved" ? "green" : "red"}
-                      />
-                    </td>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      ID
+                    </th>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Caller
+                    </th>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Category
+                    </th>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Department
+                    </th>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Priority
+                    </th>
+                    <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">
+                      Status
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+
+                <tbody>
+                  {pageRows.map((c) => (
+                    <tr key={c.id} className="group cursor-pointer" onClick={() => setViewing(c)}>
+                      {canEdit && (
+                        <RowCheckbox
+                          checked={sel.isSelected(c)}
+                          onChange={() => sel.toggle(c)}
+                          label={`Select ${c.id}`}
+                        />
+                      )}
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">
+                        {c.id}
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        {c.callerName || "Unknown caller"}
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            color: "var(--text-3)",
+                          }}
+                        >
+                          {c.phone}
+                        </div>
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        {c.category}
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        {c.department}
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        <Stamp
+                          text={c.priority}
+                          kind={PRIORITY_STAMP[c.priority]}
+                        />
+                      </td>
+
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        <Stamp
+                          text={c.status}
+                          kind={c.status === "Resolved" ? "green" : "red"}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+          <Pagination page={safePage} totalPages={totalPages} total={sorted.length} onChange={setPageNum} />
+        </>
       )}
 
       <Modal

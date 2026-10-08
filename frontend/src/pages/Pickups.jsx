@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import Pagination from "../components/Pagination";
 import { VERIFICATION_STAMP } from "../constants/lookups";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
 import { HeaderCheckbox, RowCheckbox, BulkActionBar } from "../components/BulkSelect";
@@ -84,6 +85,15 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
   const filtered = fStatus === "All" ? pickups : pickups.filter((p) => p.status === fStatus);
   // Already ordered newest-first by the backend.
   const sorted = filtered;
+
+  const PAGE_SIZE = 30;
+  const [pageNum, setPageNum] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(pageNum, totalPages);
+  const pageRows = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Reset to page 1 whenever the status filter changes
+  useEffect(() => { setPageNum(1); }, [fStatus]);
 
   async function openPreview() {
     const rows = sel.selectedFrom(sorted);
@@ -276,36 +286,39 @@ export default function Pickups({ pickups, setPickups, canEdit, addAudit, sessio
       )}
 
       {sorted.length === 0 ? <EmptyState text="No pickups scheduled." /> : (
-        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-          <div style={{ overflowX: "auto" }}>
-            <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead><tr className="group">
-                {canEdit && <HeaderCheckbox checked={sel.isAllSelected(sorted)} onChange={() => sel.toggleAll(sorted)} />}
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th>
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Winner</th>
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Item(s)</th>
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th>
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Verification</th>
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
-              </tr></thead>
-              <tbody>
-                {sorted.map((p) => (
-                  <tr key={p.id} className="group cursor-pointer" onClick={() => setViewing(p)}>
-                    {canEdit && <RowCheckbox checked={sel.isSelected(p)} onChange={() => sel.toggle(p)} label={`Select ${p.id}`} />}
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{p.id}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.winnerName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.phone}</div></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.itemDescription || p.auction || "—"}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.guideName || "—"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.guidePhone}</div></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
-                      <Stamp text={p.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[p.verificationStatus] || "gray"} />
-                    </td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={p.status} kind={PICKUP_STAMP[p.status]} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full border-collapse text-[13px] min-w-[640px]">
+                <thead><tr className="group">
+                  {canEdit && <HeaderCheckbox checked={sel.isAllSelected(pageRows)} onChange={() => sel.toggleAll(pageRows)} />}
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Winner</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Item(s)</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Guide</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Verification</th>
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
+                </tr></thead>
+                <tbody>
+                  {pageRows.map((p) => (
+                    <tr key={p.id} className="group cursor-pointer" onClick={() => setViewing(p)}>
+                      {canEdit && <RowCheckbox checked={sel.isSelected(p)} onChange={() => sel.toggle(p)} label={`Select ${p.id}`} />}
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{p.id}</td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.winnerName}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.phone}</div></td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.itemDescription || p.auction || "—"}</td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{p.guideName || "—"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.guidePhone}</div></td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">
+                        <Stamp text={p.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[p.verificationStatus] || "gray"} />
+                      </td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={p.status} kind={PICKUP_STAMP[p.status]} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+          <Pagination page={safePage} totalPages={totalPages} total={sorted.length} onChange={setPageNum} />
+        </>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "Schedule pickup"} wide>

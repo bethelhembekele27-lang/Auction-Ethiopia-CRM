@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import Pagination from "../components/Pagination";
 import { VERIFICATION_STAMP } from "../constants/lookups";
 import { fmtWindow, localDate, fmtDate } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
@@ -96,6 +97,15 @@ export default function Visitations({ appointments, setAppointments, visitSetups
   // Newest registration first. visitDate can't sort these anymore — it's null
   // for setup-backed and custom visits, and the real dates live on the setup.
   const sorted = [...filtered].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const PAGE_SIZE = 30;
+  const [pageNum, setPageNum] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(pageNum, totalPages);
+  const pageRows = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setPageNum(1); }, [fCompany, fBatch, fGuide]);
 
   const modalSetupCompanyOptions = useMemo(() => [...new Set(setupOptions.map((v) => v.company))], [setupOptions]);
   const setupsForModal = useMemo(
@@ -313,43 +323,46 @@ export default function Visitations({ appointments, setAppointments, visitSetups
       )}
 
       {sorted.length === 0 ? <EmptyState text="No visitations found." /> : (
-        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-          <div style={{ overflowX: "auto" }}>
-            <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead><tr className="group">
-                {canEdit && <HeaderCheckbox checked={sel.isAllSelected(sorted)} onChange={() => sel.toggleAll(sorted)} />}
-                <th className={TH}>ID</th><th className={TH}>Visitor</th><th className={TH}>Company / Batch</th>
-                <th className={TH}>Visit window</th><th className={TH}>Guide</th><th className={TH}>Verification</th>
-              </tr></thead>
-              <tbody>
-                {sorted.map((a) => (
-                  <tr key={a.id} className="group cursor-pointer" onClick={() => setViewing(a)}>
-                    {canEdit && <RowCheckbox checked={sel.isSelected(a)} onChange={() => sel.toggle(a)} label={`Select ${a.id}`} />}
-                    <td className={TD + " font-mono"}>{a.id}</td>
-                    <td className={TD}>
-                      {nameOf(a)}
-                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-                        {a.visitorName ? a.phone : ""}{a.isCustom ? `${a.visitorName ? " · " : ""}Custom — ID only` : ""}
-                      </div>
-                    </td>
-                    <td className={TD}>
-                      {a.isCustom ? (
-                        a.mapsLink
-                          ? <a href={a.mapsLink} target="_blank" rel="noreferrer" className="text-[color:var(--blue)] underline underline-offset-2">{a.address}</a>
-                          : a.address
-                      ) : (<>{a.company}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.batch}</div></>)}
-                    </td>
-                    <td className={TD + " font-mono"}>{a.isCustom ? "—" : fmtWindow(a.visitWindow)}</td>
-                    <td className={TD}>
-                      {a.isCustom ? "—" : (<>{a.guideName || a.assignedStaff}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.guidePhone}</div></>)}
-                    </td>
-                    <td className={TD}><Stamp text={a.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[a.verificationStatus] || "gray"} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full border-collapse text-[13px] min-w-[640px]">
+                <thead><tr className="group">
+                  {canEdit && <HeaderCheckbox checked={sel.isAllSelected(pageRows)} onChange={() => sel.toggleAll(pageRows)} />}
+                  <th className={TH}>ID</th><th className={TH}>Visitor</th><th className={TH}>Company / Batch</th>
+                  <th className={TH}>Visit window</th><th className={TH}>Guide</th><th className={TH}>Verification</th>
+                </tr></thead>
+                <tbody>
+                  {pageRows.map((a) => (
+                    <tr key={a.id} className="group cursor-pointer" onClick={() => setViewing(a)}>
+                      {canEdit && <RowCheckbox checked={sel.isSelected(a)} onChange={() => sel.toggle(a)} label={`Select ${a.id}`} />}
+                      <td className={TD + " font-mono"}>{a.id}</td>
+                      <td className={TD}>
+                        {nameOf(a)}
+                        <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                          {a.visitorName ? a.phone : ""}{a.isCustom ? `${a.visitorName ? " · " : ""}Custom — ID only` : ""}
+                        </div>
+                      </td>
+                      <td className={TD}>
+                        {a.isCustom ? (
+                          a.mapsLink
+                            ? <a href={a.mapsLink} target="_blank" rel="noreferrer" className="text-[color:var(--blue)] underline underline-offset-2">{a.address}</a>
+                            : a.address
+                        ) : (<>{a.company}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.batch}</div></>)}
+                      </td>
+                      <td className={TD + " font-mono"}>{a.isCustom ? "—" : fmtWindow(a.visitWindow)}</td>
+                      <td className={TD}>
+                        {a.isCustom ? "—" : (<>{a.guideName || a.assignedStaff}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.guidePhone}</div></>)}
+                      </td>
+                      <td className={TD}><Stamp text={a.verificationStatus || "Not sent"} kind={VERIFICATION_STAMP[a.verificationStatus] || "gray"} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+          <Pagination page={safePage} totalPages={totalPages} total={sorted.length} onChange={setPageNum} />
+        </>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "Register visitor"} wide>
