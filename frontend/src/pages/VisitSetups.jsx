@@ -120,7 +120,10 @@ export default function VisitSetups({ visitSetups, setVisitSetups, genId, canEdi
     setModalOpen(true);
   }
   async function save() {
-    if (!draft.company || !draft.batch || !draft.guideName || !draft.guidePhone) return;
+    if (!draft.company || !draft.batch || !draft.guideName || !draft.guidePhone) {
+      setSaveError("Company, batch, guide name and guide phone are all required.");
+      return;
+    }
     if (!isValidEthiopianPhone(draft.guidePhone)) {
       setSaveError(`Guide phone isn't valid. ${PHONE_HINT}`);
       return;

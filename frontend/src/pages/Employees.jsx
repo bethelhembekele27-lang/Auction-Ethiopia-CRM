@@ -58,7 +58,9 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
 
   function openNew() { setDraft({ ...emptyEmployee, role: roles[0] || "call_operator" }); setSaveError(""); setModalOpen(true); }
   async function saveNew() {
-    if (!draft.name.trim() || !draft.username.trim() || !draft.password.trim()) return;
+    if (!draft.name.trim()) { setSaveError("Employee name is required."); return; }
+    if (!draft.username.trim()) { setSaveError("Username is required."); return; }
+    if (!draft.password.trim()) { setSaveError("Password is required."); return; }
     setSaving(true);
     setSaveError("");
     try {
@@ -131,7 +133,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   }
   async function saveNewRole() {
     const name = newRoleName.trim();
-    if (!name) return;
+    if (!name) { setSaveError("Role name is required."); return; }
     setSaving(true);
     setSaveError("");
     try {

@@ -100,7 +100,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
   }
 
   async function save() {
-    if (!draft.description) return;
+    if (!draft.description) { setSaveError("Description is required."); return; }
     if (!isValidEthiopianPhone(draft.phone)) {
       setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
       return;
@@ -229,7 +229,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
           <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--green)] bg-[color:var(--green-bg)] text-[color:var(--green)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkResolve}>
             <CheckIcon /><span>Mark Resolved</span>
           </button>
-          {session && ["administrator", "auction_manager"].includes(session.role) && (
+          {session && ["administrator", "auction_manager", "call_operator"].includes(session.role) && (
             <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] btn-danger-outline cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkDelete}>
               <DeleteIcon /><span>Delete</span>
             </button>

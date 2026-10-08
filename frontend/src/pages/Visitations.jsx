@@ -309,7 +309,7 @@ export default function Visitations({ appointments, setAppointments, visitSetups
       {canEdit && (
         <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
           <button className={BTN_SM} disabled={!sel.selectedCount} onClick={openPreview}><SendIcon /><span>Send confirmation</span></button>
-          {session && ["administrator", "auction_manager"].includes(session.role) && (
+          {session && ["administrator", "auction_manager", "call_operator"].includes(session.role) && (
             <button className={BTN_DANGER_SM} disabled={!sel.selectedCount} onClick={bulkDelete}><DeleteIcon /><span>Delete</span></button>
           )}
         </BulkActionBar>

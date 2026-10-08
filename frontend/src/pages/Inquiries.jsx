@@ -236,7 +236,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     setModalOpen(true);
   }
   async function save() {
-      if (!draft.phone) return;
+      if (!draft.phone) { setSaveError("Phone number is required."); return; }
     if (!isValidEthiopianPhone(draft.phone)) {
       setSaveError(`Phone number isn't valid. ${PHONE_HINT}`);
       return;
@@ -291,7 +291,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   }
   function openEscalationSelected() { if (soleSelected && soleSelected.priority === "Urgent") openEscalationFor(soleSelected); }
   async function saveEscalation() {
-    if (!escDraft.note.trim()) return;
+    if (!escDraft.note.trim()) { setEscError("Please describe the problem before sending."); return; }
     setEscSaving(true);
     setEscError("");
     try {
@@ -333,7 +333,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     }));
   }
   async function saveVisitation() {
-    if (!apptDraft.visitorName || !apptDraft.phone) return;
+    if (!apptDraft.phone) { setApptError("Phone number is required."); return; }
     if (!apptDraft.setupId) { setApptError("Pick a visit setup first."); return; }
     if (!isValidEthiopianPhone(apptDraft.phone)) {
       setApptError(`Phone number isn't valid. ${PHONE_HINT}`);
@@ -372,7 +372,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
   }
   function openComplaintSelected() { if (soleSelected) openComplaintFor(soleSelected); }
   async function saveComplaint() {
-      if (!cmpDraft.description) return;
+      if (!cmpDraft.description) { setCmpError("Description is required."); return; }
     if (!isValidEthiopianPhone(cmpDraft.phone)) {
       setCmpError(`Phone number isn't valid. ${PHONE_HINT}`);
       return;
@@ -430,7 +430,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
             </button>
           )}
 
-          {session.role === "administrator" && (
+          {session && ["administrator", "auction_manager", "call_operator"].includes(session.role) && (
             <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--red)] bg-[color:var(--red-bg)] text-[color:var(--red)] cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={!sel.selectedCount} onClick={bulkDelete}>
               <DeleteIcon /><span>Delete</span>
             </button>

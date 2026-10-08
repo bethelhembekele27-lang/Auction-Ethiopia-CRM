@@ -131,7 +131,10 @@ export default function Followups({
   }
 
   async function save() {
-    if (!draft.date || !draft.status) return;
+    if (!draft.date || !draft.status) {
+      setSaveError(!draft.date ? "Follow-up date is required." : "Status is required.");
+      return;
+    }
 
     const prev = followups.find((x) => x.id === editing);
 

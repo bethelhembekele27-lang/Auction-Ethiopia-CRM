@@ -31,7 +31,7 @@ export default function Escalations({ escalations, setEscalations, addAudit, ses
     if (rows.length === 1) openResolve(rows[0]);
   }
   async function saveResolve() {
-    if (!resolveNote.trim()) return;
+    if (!resolveNote.trim()) { setSaveError("Resolution note is required."); return; }
     setSaving(true);
     setSaveError("");
     try {
