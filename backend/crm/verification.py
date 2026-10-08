@@ -124,11 +124,6 @@ def _visitation_visitor_text(appointment, link):
         "",
         "የጐብኝ ማረጋገጫ/ማለፊያ:",
         link,
-        "",
-        "ለተጨማሪ መረጃ እባክዎ የተሰጠዎትን የማረጋገጫ ማለፊያ ይጠቀሙ።",
-        "",
-        "ኦክሽን ኢትዮጵያ",
-        "እናመሰግናለን።",
     )
 
 
@@ -138,7 +133,7 @@ def _visitation_guide_text(appointment, link):
         "",
         "የሚከተለው ጎብኚ ለጉብኝት ተረጋግጧል።",
         "",
-        f"የጎብኚ ስም: {appointment.visitorName or '-'}",
+        f"የጎብኚ ስም: {appointment.visitorName}" if appointment.visitorName else None,
         f"ስልክ ቁጥር: {appointment.phone}",
         f"የጉብኝት ጊዜ: {window_text_et(appointment_window(appointment))}",
         "",

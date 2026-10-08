@@ -238,7 +238,6 @@ export default function Visitations({ appointments, setAppointments, visitSetups
       if (!draft.address.trim()) { setSaveError("Place name / address is required."); return; }
       if (!draft.mapsLink.trim()) { setSaveError("Google Maps link is required."); return; }
     } else {
-      if (!draft.visitorName.trim()) { setSaveError("Visitor name is required."); return; }
       if (!editing && !draft.setupIds.length) { setSaveError("Pick at least one visit setup, or choose Custom."); return; }
     }
 
@@ -432,12 +431,12 @@ export default function Visitations({ appointments, setAppointments, visitSetups
             </>
           ) : (
             <>
-              <Field label="Visitor name"><input className={inputCls} value={draft.visitorName} onChange={(e) => setDraft({ ...draft, visitorName: e.target.value })} /></Field>
+              <Field label="Visitor name (optional)"><input className={inputCls} value={draft.visitorName} onChange={(e) => setDraft({ ...draft, visitorName: e.target.value })} /></Field>
               <Field label="Phone number">
                 <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past visitor or type a new number" />
               </Field>
               <Field label="Quantity (optional)"><input className={inputCls} placeholder="e.g. 1, or 3 lots" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} /></Field>
-              <Field label="Notes" full><textarea className={inputCls} rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
+              <Field label="Notes (optional)" full><textarea className={inputCls} rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
             </>
           )}
         </div>
