@@ -13,7 +13,7 @@ export default function Escalations({ escalations, setEscalations, addAudit, ses
   const [saveError, setSaveError] = useState("");
 
   const isOperator = session && session.role === "call_operator";
-  const canResolve = session && session.role === "auction_manager";
+  const canResolve = session && ["administrator", "auction_manager"].includes(session.role);
 
   const visible = isOperator
     ? escalations.filter((e) => e.createdByUsername === session.username)

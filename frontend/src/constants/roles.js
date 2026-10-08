@@ -35,7 +35,7 @@ export const navItems = [
   { key: "complaints", label: "Complaints" },
   { key: "reports", label: "Reports", roles: ["administrator"] },
   { key: "audit", label: "Audit trail", roles: ADMIN_LIKE_ROLES },
-  { key: "escalations", label: "Manager Requests", roles: ["auction_manager", "call_operator"] },
+  { key: "escalations", label: "Manager Requests", roles: ["administrator", "auction_manager", "call_operator"] },
   { key: "employees", label: "Employees", roles: ["administrator"] },
   { key: "notifications", label: "Notifications", hidden: true },
 ];
