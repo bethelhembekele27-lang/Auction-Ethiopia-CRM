@@ -28,18 +28,18 @@ export default function Header({
   const visibleNavItems = navItems.filter((n) => !n.hidden && (!n.roles || n.roles.includes(role)));
 
   return (
-    <div className="w-full bg-[color:var(--panel)] border-b border-[color:var(--border)] text-[color:var(--text)] shrink-0 flex items-center justify-between gap-x-6 px-6 py-1.5 sticky top-0 z-50 mobile:px-4">
-      <div className="flex flex-col items-start leading-none">
+    <div className="w-full bg-[color:var(--panel)] border-b border-[color:var(--border)] text-[color:var(--text)] shrink-0 flex items-center justify-between gap-x-3 px-4 py-1.5 sticky top-0 z-50 mobile:px-4">
+      <div className="flex flex-col items-start leading-none shrink-0">
         <img src={logo} alt="Auction Ethiopia S.C." className="h-[30px] w-auto block" />
         <div className="text-[10px] text-[color:var(--text-2)] tracking-[0.04em] uppercase whitespace-nowrap mt-0.5 xs:hidden">CRM &amp; Call Center</div>
       </div>
-      <div className="flex items-center gap-5">
-        <div className="flex flex-row items-center gap-1 mobile:hidden">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="flex flex-row items-center gap-0 mobile:hidden overflow-x-auto">
           {visibleNavItems.map((n) => (
             <div
               key={n.key}
               className={
-                "flex items-center px-3 py-1.5 rounded-[5px] text-[14px] font-medium cursor-pointer border-b-2 transition-colors duration-[120ms] hover:bg-[color:var(--paper)] hover:text-[color:var(--text)] " +
+                "flex items-center whitespace-nowrap px-2 py-1.5 rounded-[5px] text-[13px] font-medium cursor-pointer border-b-2 transition-colors duration-[120ms] hover:bg-[color:var(--paper)] hover:text-[color:var(--text)] " +
                 (page === n.key
                   ? "text-[color:var(--brass)] border-b-[color:var(--brass)]"
                   : "text-[color:var(--text-2)] border-transparent")
