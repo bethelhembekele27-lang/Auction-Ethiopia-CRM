@@ -100,37 +100,72 @@ def create_verification(subject_type: str, subject_id: str, expires_at=None) -> 
 # but keeps user-typed fields (address, names, notes) from injecting
 # stray Unicode punctuation alongside it.
 
+PREVIEW_LINK = "[ማለፊያ ሲላክ ይፈጠራል]"
+
+
+def _join_lines(*parts):
+    # None = skip this line entirely (used for optional fields so an empty
+    # address/map link doesn't leave a dangling "label:" with nothing after it).
+    # "" = a deliberate blank line for spacing.
+    return "\n".join(p for p in parts if p is not None)
+
+
+# ---------------------------------------------------------------- visitation
+
+def _visitation_visitor_text(appointment, link):
+    return _join_lines(
+        "ውድ ደንበኛችን፣",
+        "",
+        "የጉብኝትዎ ምዝገባ በተሳካ ሁኔታ ተረጋግጧል። እባክዎ የጉብኝትዎን ዝርዝር መረጃ ከዚህ በታች ይመልከቱ።",
+        "",
+        f"የጉብኝት አቅጣጫ: {appointment.address}" if appointment.address else None,
+        f"የአቅጣጫ ካርታ: {appointment.mapsLink}" if appointment.mapsLink else None,
+        f"አስጎብኚ: {appointment.guideName or '-'} - {appointment.guidePhone or '-'}",
+        "",
+        "የጐብኝ ማረጋገጫ/ማለፊያ:",
+        link,
+        "",
+        "ለተጨማሪ መረጃ እባክዎ የተሰጠዎትን የማረጋገጫ ማለፊያ ይጠቀሙ።",
+        "",
+        "ኦክሽን ኢትዮጵያ",
+        "እናመሰግናለን።",
+    )
+
+
+def _visitation_guide_text(appointment, link):
+    return _join_lines(
+        "ውድ አስጎብኚያችን፣",
+        "",
+        "የሚከተለው ጎብኚ ለጉብኝት ተረጋግጧል።",
+        "",
+        f"የጎብኚ ስም: {appointment.visitorName or '-'}",
+        f"ስልክ ቁጥር: {appointment.phone}",
+        f"የጉብኝት ጊዜ: {window_text_et(appointment_window(appointment))}",
+        "",
+        "የጎብኚ ማረጋገጫ ማለፊያ:",
+        link,
+        "",
+        "እባክዎ የጎብኚውን መረጃ በመመርመር ጉብኝቱን ያስተናግዱ።",
+        "",
+        "ኦክሽን ኢትዮጵያ",
+    )
+
+
 def build_visitation_messages(appointment, verification: PartyVerification) -> tuple[str, str]:
     visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
     guide_link = f"{FRONTEND_BASE_URL}/g/{verification.guideToken}"
-
-    location_bits = [appointment.address] if appointment.address else []
-    if appointment.mapsLink:
-        location_bits.append(appointment.mapsLink)
-    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋገጠም"
-
-    what = appointment.batch or appointment.auction or "እቃው"
-    qty_suffix = f" (ብዛት: {appointment.quantity})" if appointment.quantity else ""
-    window = window_text_et(appointment_window(appointment))
-
-    visitor_message = (
-        f"ኦክሽን ኢትዮጵያ - ጉብኝት ተረጋግጧል\n"
-        f"{what}{qty_suffix}\n"
-        f"ጊዜ: {window}\n"
-        f"አካባቢ: {location}\n"
-        f"አስጎብኚ: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
-        f"የእርስዎ ማለፊያ: {visitor_link}"
+    return (
+        to_gsm7_safe(_visitation_visitor_text(appointment, visitor_link)),
+        to_gsm7_safe(_visitation_guide_text(appointment, guide_link)),
     )
 
-    guide_message = (
-        f"ኦክሽን ኢትዮጵያ - ጎብኚ ያረጋግጡ\n"
-        f"{appointment.visitorName or appointment.phone} ({appointment.phone})\n"
-        f"የሚመለከቱት {what}{qty_suffix}\n"
-        f"ጊዜ: {window}\n"
-        f"ያረጋግጡ: {guide_link}"
-    )
 
-    return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
+def build_visitation_preview(appointment) -> tuple[str, str]:
+    # Same templates as the real send, placeholder link, no PartyVerification created.
+    return (
+        to_gsm7_safe(_visitation_visitor_text(appointment, PREVIEW_LINK)),
+        to_gsm7_safe(_visitation_guide_text(appointment, PREVIEW_LINK)),
+    )
 
 
 def build_custom_visit_message(appointment) -> str:
@@ -333,98 +368,62 @@ def create_pickup(validated_data: dict, created_by=None):
     return Pickup.objects.create(**data)
 
 
+# -------------------------------------------------------------------- pickup
+
+def _pickup_winner_text(pickup, link):
+    return _join_lines(
+        "ውድ ደንበኛችን፣",
+        "",
+        "የእቃ መውሰጃ ምዝገባዎ በተሳካ ሁኔታ ተረጋግጧል። እባክዎ ዝርዝር መረጃውን ከዚህ በታች ይመልከቱ።",
+        "",
+        f"እቃ: {pickup.itemDescription or pickup.auction}" if (pickup.itemDescription or pickup.auction) else None,
+        f"ብዛት: {pickup.quantity}" if pickup.quantity else None,
+        f"የክፍያ ማመሳከሪያ ቁጥር: {pickup.paymentReference}" if pickup.paymentReference else None,
+        f"የመውሰጃ አድራሻ: {pickup.address}" if pickup.address else None,
+        f"የአቅጣጫ ካርታ: {pickup.mapsLink}" if pickup.mapsLink else None,
+        f"አስጎብኚ: {pickup.guideName or '-'} - {pickup.guidePhone or '-'}",
+        "",
+        "የመውሰጃ ማረጋገጫ/ማለፊያ:",
+        link,
+        "",
+        "እቃውን በማንኛውም ጊዜ መውሰድ ይችላሉ። እባክዎ ሲመጡ የተሰጠዎትን የማረጋገጫ ማለፊያ ይጠቀሙ።",
+        "",
+        "ኦክሽን ኢትዮጵያ",
+        "እናመሰግናለን።",
+    )
+
+
+def _pickup_guide_text(pickup, link):
+    return _join_lines(
+        "ውድ አስጎብኚያችን፣",
+        "",
+        "የሚከተለው አሸናፊ እቃውን ለመውሰድ ተረጋግጧል።",
+        "",
+        f"የአሸናፊ ስም: {pickup.winnerName}",
+        f"ስልክ ቁጥር: {pickup.phone}",
+        f"እቃ: {pickup.itemDescription or pickup.auction}" if (pickup.itemDescription or pickup.auction) else None,
+        f"ብዛት: {pickup.quantity}" if pickup.quantity else None,
+        "",
+        "የአሸናፊ ማረጋገጫ ማለፊያ:",
+        link,
+        "",
+        "እባክዎ የአሸናፊውን መረጃ በመመርመር እቃውን ያስረክቡ።",
+        "",
+        "ኦክሽን ኢትዮጵያ",
+    )
+
+
 def build_pickup_messages(pickup, verification: PartyVerification) -> tuple[str, str]:
-    """Same shape as build_visitation_messages — winner + guide SMS."""
-    visitor_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
+    winner_link = f"{FRONTEND_BASE_URL}/v/{verification.visitorToken}"
     guide_link = f"{FRONTEND_BASE_URL}/g/{verification.guideToken}"
-
-    location_bits = [pickup.address] if pickup.address else []
-    if pickup.mapsLink:
-        location_bits.append(pickup.mapsLink)
-    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋግጠም"
-
-    what = pickup.itemDescription or pickup.auction or "እቃዎቹ"
-    qty_suffix = f" (ብዛት: {pickup.quantity})" if pickup.quantity else ""
-    ref_line = f"የክፍያ ማመሳከሪያ ቁጥር: {pickup.paymentReference}\n" if pickup.paymentReference else ""
-
-    # A pickup has no scheduled moment any more, so there is no date line at
-    # all — the item, payment reference and location carry the message.
-    visitor_message = (
-        f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
-        f"{what}{qty_suffix}\n"
-        f"{ref_line}"
-        f"አካባቢ: {location}\n"
-        f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
-        f"የእርስዎ ማለፊያ: {visitor_link}"
+    return (
+        to_gsm7_safe(_pickup_winner_text(pickup, winner_link)),
+        to_gsm7_safe(_pickup_guide_text(pickup, guide_link)),
     )
-    guide_message = (
-        f"ኦክሽን ኢትዮጵያ - መውሰጃ ያረጋግጡ\n"
-        f"{pickup.winnerName} ({pickup.phone})\n"
-        f"የሚሰበስቡት {what}{qty_suffix}\n"
-        f"ያረጋግጡ: {guide_link}"
-    )
-    return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
-
-
-def build_visitation_preview(appointment) -> tuple[str, str]:
-    """
-    Same content as build_visitation_messages(), but uses a placeholder
-    for the pass link instead of a real token — no PartyVerification is
-    created, so calling this has zero side effects and can't be sent
-    accidentally. Used by the preview modal before a real send.
-    """
-    location_bits = [appointment.address] if appointment.address else []
-    if appointment.mapsLink:
-        location_bits.append(appointment.mapsLink)
-    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋገጠም"
-
-    what = appointment.batch or appointment.auction or "እቃው"
-    qty_suffix = f" (ብዛት: {appointment.quantity})" if appointment.quantity else ""
-    window = window_text_et(appointment_window(appointment))
-    placeholder_link = "[ማለፊያ ሲላክ ይፈጠራል]"
-
-    visitor_message = (
-        f"ኦክሽን ኢትዮጵያ - ጉብኝት ተረጋግጧል\n"
-        f"{what}{qty_suffix}\n"
-        f"ጊዜ: {window}\n"
-        f"አካባቢ: {location}\n"
-        f"አስጎብኚ: {appointment.guideName or '-'} ({appointment.guidePhone or '-'})\n"
-        f"የእርስዎ ማለፊያ: {placeholder_link}"
-    )
-    guide_message = (
-        f"ኦክሽን ኢትዮጵያ - ጎብኚ ያረጋግጡ\n"
-        f"{appointment.visitorName or appointment.phone} ({appointment.phone})\n"
-        f"የሚመለከቱት {what}{qty_suffix}\n"
-        f"ጊዜ: {window}\n"
-        f"ያረጋግጡ: {placeholder_link}"
-    )
-    return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
 
 
 def build_pickup_preview(pickup) -> tuple[str, str]:
-    """Same as build_visitation_preview, for pickups. No side effects."""
-    location_bits = [pickup.address] if pickup.address else []
-    if pickup.mapsLink:
-        location_bits.append(pickup.mapsLink)
-    location = " - ".join(location_bits) or "አካባቢ ገና አልተረጋገጠም"
-
-    what = pickup.itemDescription or pickup.auction or "እቃዎቹ"
-    qty_suffix = f" (ብዛት: {pickup.quantity})" if pickup.quantity else ""
-    ref_line = f"የክፍያ ማመሳከሪያ ቁጥር: {pickup.paymentReference}\n" if pickup.paymentReference else ""
-    placeholder_link = "[ማለፊያ ሲላክ ይፈጠራል]"
-
-    visitor_message = (
-        f"ኦክሽን ኢትዮጵያ - መውሰጃ ተረጋግጧል\n"
-        f"{what}{qty_suffix}\n"
-        f"{ref_line}"
-        f"አካባቢ: {location}\n"
-        f"አስጎብኚ: {pickup.guideName or '-'} ({pickup.guidePhone or '-'})\n"
-        f"የእርስዎ ማለፊያ: {placeholder_link}"
+    return (
+        to_gsm7_safe(_pickup_winner_text(pickup, PREVIEW_LINK)),
+        to_gsm7_safe(_pickup_guide_text(pickup, PREVIEW_LINK)),
     )
-    guide_message = (
-        f"ኦክሽን ኢትዮጵያ - መውሰጃ ያረጋግጡ\n"
-        f"{pickup.winnerName} ({pickup.phone})\n"
-        f"የሚሰበስቡት {what}{qty_suffix}\n"
-        f"ያረጋግጡ: {placeholder_link}"
-    )
-    return to_gsm7_safe(visitor_message), to_gsm7_safe(guide_message)
