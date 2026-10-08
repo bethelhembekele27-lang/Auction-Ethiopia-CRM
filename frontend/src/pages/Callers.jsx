@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import Pagination from "../components/Pagination";
 import { PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
 import { fmtDate, fmtWindow, displayName } from "../utils/format";
 import { Stamp, Modal, EmptyState } from "../components/ui";
@@ -27,6 +28,14 @@ export default function Callers({ inquiries, followups, appointments }) {
     return (c.callerName || "").toLowerCase().includes(q) || c.phone.includes(q) || (c.company || "").toLowerCase().includes(q);
   });
 
+  const PAGE_SIZE = 30;
+  const [pageNum, setPageNum] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(pageNum, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  useEffect(() => { setPageNum(1); }, [query]);
+
   const detail = openPhone ? callers.find((c) => c.phone === openPhone) : null;
   const detailFollowups = detail ? followups.filter((f) => detail.inquiries.some((i) => i.id === f.inquiryId)) : [];
   const detailAppointments = detail ? appointments.filter((a) => a.phone === detail.phone) : [];
@@ -38,29 +47,32 @@ export default function Callers({ inquiries, followups, appointments }) {
       </div>
 
       {filtered.length === 0 ? <EmptyState text="No callers found." /> : (
-        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-          <div style={{ overflowX: "auto" }}>
-            <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead><tr className="group">
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Caller</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Phone</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Total inquiries</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Latest status</th>
-              </tr></thead>
-              <tbody>
-                {filtered.map((c) => {
-                  const latest = [...c.inquiries].sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime))[0];
-                  return (
-                    <tr key={c.phone} className="group cursor-pointer" onClick={() => setOpenPhone(c.phone)}>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{displayName(c.callerName)}</td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{c.phone}</td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{c.company || "—"}</td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{c.inquiries.length}</td>
-                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={latest.status} kind={STATUS_STAMP[latest.status]} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <>
+          <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full border-collapse text-[13px] min-w-[640px]">
+                <thead><tr className="group">
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Caller</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Phone</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Company</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Total inquiries</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Latest status</th>
+                </tr></thead>
+                <tbody>
+                  {pageRows.map((c) => {
+                    const latest = [...c.inquiries].sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime))[0];
+                    return (
+                      <tr key={c.phone} className="group cursor-pointer" onClick={() => setOpenPhone(c.phone)}>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{displayName(c.callerName)}</td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{c.phone}</td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{c.company || "—"}</td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{c.inquiries.length}</td>
+                        <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={latest.status} kind={STATUS_STAMP[latest.status]} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+          <Pagination page={safePage} totalPages={totalPages} total={filtered.length} onChange={setPageNum} />
+        </>
       )}
 
       <Modal open={!!detail} onClose={() => setOpenPhone(null)} title={detail ? `${displayName(detail.callerName)} — call history` : ""} wide>

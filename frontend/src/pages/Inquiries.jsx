@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import Pagination from "../components/Pagination";
 import { CATEGORIES, PRIORITIES, STATUSES, COMPLAINT_CATEGORIES, DEPARTMENTS, PRIORITY_STAMP, STATUS_STAMP } from "../constants/lookups";
 import { todayISO, fmtDate, displayName } from "../utils/format";
 import { Stamp, Field, Modal, EmptyState, inputCls } from "../components/ui";
@@ -156,6 +157,15 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     const rows = sel.selectedFrom(filtered);
     return rows.length === 1 ? rows[0] : null;
   }, [sel.selected, filtered]);
+
+  const PAGE_SIZE = 30;
+  const [pageNum, setPageNum] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(pageNum, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Reset to page 1 whenever any filter or search query changes
+  useEffect(() => { setPageNum(1); }, [query, fCategory, fPriority, fStatus, fOperator]);
   const { pending, confirm, cancel, run } = useConfirm();
   async function bulkDelete() {
     const rows = sel.selectedFrom(filtered);
@@ -429,30 +439,33 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
       )}
 
       {filtered.length === 0 ? <EmptyState text="No inquiries match these filters." /> : (
-        <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
-          <div style={{ overflowX: "auto" }}>
-            <table className="w-full border-collapse text-[13px] min-w-[640px]">
-              <thead><tr className="group">
-                {canEdit && <HeaderCheckbox checked={sel.isAllSelected(filtered)} onChange={() => sel.toggleAll(filtered)} />}
-                <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Caller</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Category</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Priority</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Operator</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
-              </tr></thead>
-              <tbody>
-                {filtered.map((i) => (
-                  <tr key={i.id} className="group cursor-pointer" onClick={() => setViewing(i)}>
-                    {canEdit && <RowCheckbox checked={sel.isSelected(i)} onChange={() => sel.toggle(i)} label={`Select ${i.id}`} />}
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{i.id}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.callerName || "Unknown caller"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.phone}{i.company ? ` · ${i.company}` : ""}</div></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.category}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.auction}{i.batch ? ` · ${i.batch}` : ""}</div></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={i.priority} kind={PRIORITY_STAMP[i.priority]} /></td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.operator}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(i.dateTime.slice(0, 10))}</td>
-                    <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={i.status} kind={STATUS_STAMP[i.status]} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          <div className="bg-[color:var(--panel)] border border-[color:var(--border)] rounded-[10px] overflow-hidden">
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full border-collapse text-[13px] min-w-[640px]">
+                <thead><tr className="group">
+                  {canEdit && <HeaderCheckbox checked={sel.isAllSelected(pageRows)} onChange={() => sel.toggleAll(pageRows)} />}
+                  <th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">ID</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Caller</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Category</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Priority</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Operator</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Date</th><th className="text-left text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-2)] font-semibold py-2.5 px-3 border-b border-[color:var(--border)]">Status</th>
+                </tr></thead>
+                <tbody>
+                  {pageRows.map((i) => (
+                    <tr key={i.id} className="group cursor-pointer" onClick={() => setViewing(i)}>
+                      {canEdit && <RowCheckbox checked={sel.isSelected(i)} onChange={() => sel.toggle(i)} label={`Select ${i.id}`} />}
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{i.id}</td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.callerName || "Unknown caller"}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.phone}{i.company ? ` · ${i.company}` : ""}</div></td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.category}<div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{i.auction}{i.batch ? ` · ${i.batch}` : ""}</div></td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={i.priority} kind={PRIORITY_STAMP[i.priority]} /></td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]">{i.operator}</td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616] font-mono">{fmtDate(i.dateTime.slice(0, 10))}</td>
+                      <td className="py-[11px] px-3 border-b border-[color:var(--border)] align-middle group-hover:bg-[#F9F9F7] dark:group-hover:bg-[#161616]"><Stamp text={i.status} kind={STATUS_STAMP[i.status]} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+          <Pagination page={safePage} totalPages={totalPages} total={filtered.length} onChange={setPageNum} />
+        </>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "New inquiry"} wide>
@@ -491,10 +504,10 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
             <select className={inputCls} value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
           </Field>
           <Field label="Follow-up date"><input type="date" className={inputCls} value={draft.followUpDate} onChange={(e) => setDraft({ ...draft, followUpDate: e.target.value })} /></Field>
-          <Field label="Inquiry description" full>
+          <Field label="Inquiry description (optional)" full>
             <textarea className={inputCls} rows={3} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
           </Field>
-          <Field label="Resolution notes" full>
+          <Field label="Resolution notes (optional)" full>
             <textarea className={inputCls} rows={2} value={draft.resolutionNotes} onChange={(e) => setDraft({ ...draft, resolutionNotes: e.target.value })} />
           </Field>
         </div>
