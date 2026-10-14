@@ -361,6 +361,8 @@ class EmployeeDetailView(RoleRequiredAPIView):
         if new_status is not None:
             if new_status not in ('Active', 'Inactive'):
                 return Response({'message': "status must be 'Active' or 'Inactive'."}, status=http_status.HTTP_400_BAD_REQUEST)
+            if employee.user_id == request.user.id and new_status == 'Inactive':
+                return Response({'message': "You can't deactivate your own account."}, status=http_status.HTTP_400_BAD_REQUEST)
             employee.status = new_status
             employee.user.is_active = (new_status == 'Active')
             employee.user.save(update_fields=['is_active'])
@@ -395,6 +397,20 @@ class EmployeeDetailView(RoleRequiredAPIView):
                 employee.lastUsernameChange = timezone.now()
                 employee.save(update_fields=['lastUsernameChange'])
                 log_audit(request, 'Change employee username', old, username, employee.name)
+
+        role_key = request.data.get('role')
+        if role_key is not None and role_key != employee.role.key:
+            try:
+                new_role = Role.objects.get(key=role_key)
+            except Role.DoesNotExist:
+                return Response({'message': 'Invalid role.'}, status=http_status.HTTP_400_BAD_REQUEST)
+            if employee.user_id == request.user.id:
+                return Response({'message': "You can't change your own role."}, status=http_status.HTTP_400_BAD_REQUEST)
+            old = employee.role.name
+            employee.role = new_role
+            employee.privileges = list(new_role.defaultPrivileges)
+            employee.save(update_fields=['role', 'privileges'])
+            log_audit(request, 'Change employee role', old, new_role.name, employee.name)
 
         log_audit(request, 'Edit employee', '—', employee.user.username,
                   f'status={employee.status}, name={employee.name}')

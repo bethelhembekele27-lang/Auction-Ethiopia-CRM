@@ -30,7 +30,7 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   const [resetPwConfirm, setResetPwConfirm] = useState("");
   const [resetPwError, setResetPwError] = useState("");
   const [resetPwSaving, setResetPwSaving] = useState(false);
-  const [editUsername, setEditUsername] = useState("");
+  const [draftFields, setDraftFields] = useState({});
   const [unameError, setUnameError] = useState("");
   const sel = useRowSelection((e) => e.id);
   const [viewing, setViewing] = useState(null);
@@ -42,7 +42,10 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   }, [roles]);
 
   useEffect(() => {
-    if (viewing) { setEditUsername(viewing.username); setUnameError(""); }
+    if (viewing) {
+      setDraftFields({ username: viewing.username, name: viewing.name, email: viewing.email || "", role: viewing.role, status: viewing.status });
+      setUnameError("");
+    }
   }, [viewing]);
 
   async function bulkDelete() {
@@ -116,14 +119,15 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
     const rows = sel.selectedFrom(employees);
     if (rows.length === 1) openResetPassword(rows[0]);
   }
-  async function saveUsername() {
-    const v = editUsername.trim().toLowerCase();
+  async function saveField(field, value) {
+    setUnameError("");
+    const finalValue = (field === 'username' || field === 'email') ? value.toLowerCase() : value;
     try {
-      const updated = await employeesApi.updateEmployee(viewing.id, { username: v });
+      const updated = await employeesApi.updateEmployee(viewing.id, { [field]: finalValue });
       setEmployees((prev) => prev.map((e) => (e.id === viewing.id ? { ...e, ...updated } : e)));
-      addAudit("Change employee username", viewing.username, v, viewing.name);
+      addAudit(`Change employee ${field}`, String(viewing[field] ?? "—"), String(finalValue), viewing.name);
       setViewing({ ...viewing, ...updated });
-    } catch (err) { setUnameError(err.body?.message || "Couldn't update username."); }
+    } catch (err) { setUnameError(err.body?.message || "Couldn't save."); }
   }
   async function saveResetPassword() {
     if (!resetPwValue || resetPwValue.length < 10) { setResetPwError("Password must be at least 10 characters."); return; }
@@ -412,22 +416,42 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
       <Modal open={!!viewing} onClose={() => setViewing(null)} title={viewing ? viewing.name : ""} wide>
         {viewing && (
           <>
-            <Field label="Username" full>
+            {[["username", "Username"], ["name", "Name"], ["email", "Email"]].map(([key, label]) => (
+              <Field key={key} label={label} full>
+                <div className="flex gap-2">
+                  <input className={inputCls} value={draftFields[key] ?? ""} onChange={(e) => setDraftFields({ ...draftFields, [key]: e.target.value })} />
+                  <button className="font-sans text-[13px] font-medium px-4 rounded-[5px] border border-[color:var(--brass)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40"
+                    disabled={!String(draftFields[key] ?? "").trim() && key !== "email" || (draftFields[key] ?? "").trim().toLowerCase() === (viewing[key] ?? "").toLowerCase()}
+                    onClick={() => saveField(key, (draftFields[key] || "").trim())}>Save</button>
+                </div>
+              </Field>
+            ))}
+
+            <Field label="Role" full>
               <div className="flex gap-2">
-                <input className={inputCls} value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
-                <button
-                  className="font-sans text-[13px] font-medium px-4 rounded-[5px] border border-[color:var(--brass)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40"
-                  disabled={!editUsername.trim() || editUsername.trim().toLowerCase() === viewing.username}
-                  onClick={saveUsername}
-                >Save</button>
+                <select className={inputCls} value={draftFields.role || ""} onChange={(e) => setDraftFields({ ...draftFields, role: e.target.value })}>
+                  {roles.map((r) => <option key={r} value={r}>{roleLabels[r] || r}</option>)}
+                </select>
+                <button className="font-sans text-[13px] font-medium px-4 rounded-[5px] border border-[color:var(--brass)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40"
+                  disabled={draftFields.role === viewing.role}
+                  onClick={() => { if (window.confirm("Changing the role changes what this person can access. Continue?")) saveField("role", draftFields.role); }}>Save</button>
               </div>
             </Field>
+
+            <Field label="Status" full>
+              <div className="flex gap-2">
+                <select className={inputCls} value={draftFields.status || ""} onChange={(e) => setDraftFields({ ...draftFields, status: e.target.value })}>
+                  <option>Active</option><option>Inactive</option>
+                </select>
+                <button className="font-sans text-[13px] font-medium px-4 rounded-[5px] border border-[color:var(--brass)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40"
+                  disabled={draftFields.status === viewing.status}
+                  onClick={() => saveField("status", draftFields.status)}>Save</button>
+              </div>
+            </Field>
+
             {unameError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{unameError}</div>}
             <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mt-4">
               {[
-                ["Email", viewing.email],
-                ["Role", roleLabels[viewing.role] || viewing.role],
-                ["Status", viewing.status],
                 ["Last password change", viewing.lastPasswordChange && fmtDate(viewing.lastPasswordChange)],
                 ["Last username change", viewing.lastUsernameChange && fmtDate(viewing.lastUsernameChange)],
               ].map(([label, value]) => (
