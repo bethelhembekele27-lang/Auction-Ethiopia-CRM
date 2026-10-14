@@ -1279,7 +1279,7 @@ class AuditLogListView(RoleRequiredAPIView):
     required_roles = ('administrator', 'auction_manager')
 
     def get(self, request):
-        qs = AuditLog.objects.all().order_by('-actionDate')
+        qs = AuditLog.objects.select_related('performedBy').order_by('-actionDate')
 
         from_date = request.query_params.get('from')
         to_date = request.query_params.get('to')
@@ -1295,7 +1295,7 @@ class AuditLogListView(RoleRequiredAPIView):
         if action:
             qs = qs.filter(action__icontains=action)
 
-        return Response(AuditLogSerializer(qs, many=True).data)
+        return Response(AuditLogSerializer(qs[:500], many=True).data)
 
 class AuditLogClearView(RoleRequiredAPIView):
     required_roles = ('administrator',)
