@@ -31,6 +31,9 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   const [resetPwConfirm, setResetPwConfirm] = useState("");
   const [resetPwError, setResetPwError] = useState("");
   const [resetPwSaving, setResetPwSaving] = useState(false);
+  const [unameTarget, setUnameTarget] = useState(null);
+  const [editUsername, setEditUsername] = useState("");
+  const [unameError, setUnameError] = useState("");
   const sel = useRowSelection((e) => e.id);
   const [viewing, setViewing] = useState(null);
 
@@ -110,6 +113,26 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   function openResetPasswordSelected() {
     const rows = sel.selectedFrom(employees);
     if (rows.length === 1) openResetPassword(rows[0]);
+  }
+  function openEditUsername(emp) {
+    setUnameTarget(emp);
+    setEditUsername(emp.username);
+    setUnameError("");
+  }
+  function openEditUsernameSelected() {
+    const rows = sel.selectedFrom(employees);
+    if (rows.length === 1) openEditUsername(rows[0]);
+  }
+  async function saveUsername() {
+    const v = editUsername.trim().toLowerCase();
+    if (!v) { setUnameError("Username is required."); return; }
+    try {
+      const updated = await employeesApi.updateEmployee(unameTarget.id, { username: v });
+      setEmployees((prev) => prev.map((e) => (e.id === unameTarget.id ? { ...e, ...updated } : e)));
+      addAudit("Change employee username", unameTarget.username, v, unameTarget.name);
+      setUnameTarget(null);
+      sel.clear();
+    } catch (err) { setUnameError(err.body?.message || "Couldn't update username."); }
   }
   async function saveResetPassword() {
     if (!resetPwValue || resetPwValue.length < 10) { setResetPwError("Password must be at least 10 characters."); return; }
@@ -200,6 +223,9 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
       <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
         <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openPrivSelected}>
           <EditIcon /><span>Edit privileges</span>
+        </button>
+        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openEditUsernameSelected}>
+          Edit username
         </button>
         <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openResetPasswordSelected} title="Set a new password for this employee — no old password needed">
           Reset password
@@ -403,6 +429,14 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
           ["Privileges", (viewing.privileges || []).join(", "), true],
         ]}
         onClose={() => setViewing(null)} />
+      <Modal open={!!unameTarget} onClose={() => setUnameTarget(null)} title={unameTarget ? `Edit username — ${unameTarget.name}` : ""}>
+        <Field label="Username" full><input className={inputCls} value={editUsername} onChange={(e) => setEditUsername(e.target.value)} /></Field>
+        {unameError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{unameError}</div>}
+        <div className="flex gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
+          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" onClick={saveUsername}>Save</button>
+          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setUnameTarget(null)}>Cancel</button>
+        </div>
+      </Modal>
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
   );

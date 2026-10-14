@@ -53,6 +53,7 @@ from .verification import (
 )
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -379,6 +380,21 @@ class EmployeeDetailView(RoleRequiredAPIView):
             employee.user.email = email
             employee.user.save(update_fields=['email'])
         # TO HERE
+
+        username = request.data.get('username')
+        if username is not None:
+            username = username.strip().lower()
+            if not username:
+                return Response({'message': 'Username is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+            if User.objects.filter(username__iexact=username).exclude(pk=employee.user_id).exists():
+                return Response({'message': 'That username is already taken.'}, status=http_status.HTTP_400_BAD_REQUEST)
+            if username != employee.user.username:
+                old = employee.user.username
+                employee.user.username = username
+                employee.user.save(update_fields=['username'])
+                employee.lastUsernameChange = timezone.now()
+                employee.save(update_fields=['lastUsernameChange'])
+                log_audit(request, 'Change employee username', old, username, employee.name)
 
         log_audit(request, 'Edit employee', '—', employee.user.username,
                   f'status={employee.status}, name={employee.name}')
