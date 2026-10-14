@@ -7,7 +7,6 @@ import { useRowSelection } from "../hooks/useRowSelection";
 import { employees as employeesApi } from "../api";
 import { useConfirm } from "../hooks/useConfirm";
 import ConfirmDialog from "../components/ConfirmDialog";
-import RowDetail from "../components/RowDetail";
 import { PasswordInput } from "../components/AccountSettingsModal";
 import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
 
@@ -31,7 +30,6 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   const [resetPwConfirm, setResetPwConfirm] = useState("");
   const [resetPwError, setResetPwError] = useState("");
   const [resetPwSaving, setResetPwSaving] = useState(false);
-  const [unameTarget, setUnameTarget] = useState(null);
   const [editUsername, setEditUsername] = useState("");
   const [unameError, setUnameError] = useState("");
   const sel = useRowSelection((e) => e.id);
@@ -42,6 +40,10 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
   useEffect(() => {
     employeesApi.listRolesFull().then(setRolesFull).catch(() => {});
   }, [roles]);
+
+  useEffect(() => {
+    if (viewing) { setEditUsername(viewing.username); setUnameError(""); }
+  }, [viewing]);
 
   async function bulkDelete() {
     const rows = sel.selectedFrom(employees);
@@ -114,24 +116,13 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
     const rows = sel.selectedFrom(employees);
     if (rows.length === 1) openResetPassword(rows[0]);
   }
-  function openEditUsername(emp) {
-    setUnameTarget(emp);
-    setEditUsername(emp.username);
-    setUnameError("");
-  }
-  function openEditUsernameSelected() {
-    const rows = sel.selectedFrom(employees);
-    if (rows.length === 1) openEditUsername(rows[0]);
-  }
   async function saveUsername() {
     const v = editUsername.trim().toLowerCase();
-    if (!v) { setUnameError("Username is required."); return; }
     try {
-      const updated = await employeesApi.updateEmployee(unameTarget.id, { username: v });
-      setEmployees((prev) => prev.map((e) => (e.id === unameTarget.id ? { ...e, ...updated } : e)));
-      addAudit("Change employee username", unameTarget.username, v, unameTarget.name);
-      setUnameTarget(null);
-      sel.clear();
+      const updated = await employeesApi.updateEmployee(viewing.id, { username: v });
+      setEmployees((prev) => prev.map((e) => (e.id === viewing.id ? { ...e, ...updated } : e)));
+      addAudit("Change employee username", viewing.username, v, viewing.name);
+      setViewing({ ...viewing, ...updated });
     } catch (err) { setUnameError(err.body?.message || "Couldn't update username."); }
   }
   async function saveResetPassword() {
@@ -223,9 +214,6 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
       <BulkActionBar count={sel.selectedCount} onClear={sel.clear}>
         <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed btn-icon-label" disabled={sel.selectedCount !== 1} onClick={openPrivSelected}>
           <EditIcon /><span>Edit privileges</span>
-        </button>
-        <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openEditUsernameSelected}>
-          Edit username
         </button>
         <button className="font-sans text-[13px] font-medium px-2.5 py-[5px] rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] text-xs disabled:opacity-40 disabled:cursor-not-allowed" disabled={sel.selectedCount !== 1} onClick={openResetPasswordSelected} title="Set a new password for this employee — no old password needed">
           Reset password
@@ -421,21 +409,43 @@ export default function Employees({ employees, setEmployees, roles, setRoles, ad
           <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setRoleModalOpen(false)}>Cancel</button>
         </div>
       </Modal>
-      <RowDetail title={viewing ? `${viewing.name}` : ""} fields={viewing && [
-          ["Name", viewing.name], ["Username", viewing.username], ["Email", viewing.email],
-          ["Role", roleLabels[viewing.role] || viewing.role], ["Status", viewing.status],
-          ["Last password change", viewing.lastPasswordChange && fmtDate(viewing.lastPasswordChange)],
-          ["Last username change", viewing.lastUsernameChange && fmtDate(viewing.lastUsernameChange)],
-          ["Privileges", (viewing.privileges || []).join(", "), true],
-        ]}
-        onClose={() => setViewing(null)} />
-      <Modal open={!!unameTarget} onClose={() => setUnameTarget(null)} title={unameTarget ? `Edit username — ${unameTarget.name}` : ""}>
-        <Field label="Username" full><input className={inputCls} value={editUsername} onChange={(e) => setEditUsername(e.target.value)} /></Field>
-        {unameError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{unameError}</div>}
-        <div className="flex gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-[color:var(--brass)] text-white border-[color:var(--brass)]" onClick={saveUsername}>Save</button>
-          <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text)] cursor-pointer hover:border-[color:var(--text-3)] bg-transparent" onClick={() => setUnameTarget(null)}>Cancel</button>
-        </div>
+      <Modal open={!!viewing} onClose={() => setViewing(null)} title={viewing ? viewing.name : ""} wide>
+        {viewing && (
+          <>
+            <Field label="Username" full>
+              <div className="flex gap-2">
+                <input className={inputCls} value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
+                <button
+                  className="font-sans text-[13px] font-medium px-4 rounded-[5px] border border-[color:var(--brass)] bg-[color:var(--brass)] text-white cursor-pointer disabled:opacity-40"
+                  disabled={!editUsername.trim() || editUsername.trim().toLowerCase() === viewing.username}
+                  onClick={saveUsername}
+                >Save</button>
+              </div>
+            </Field>
+            {unameError && <div className="bg-[color:var(--red-bg)] text-[color:var(--red)] text-[12.5px] px-3 py-2 rounded-md" style={{ marginTop: 10 }}>{unameError}</div>}
+            <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mt-4">
+              {[
+                ["Email", viewing.email],
+                ["Role", roleLabels[viewing.role] || viewing.role],
+                ["Status", viewing.status],
+                ["Last password change", viewing.lastPasswordChange && fmtDate(viewing.lastPasswordChange)],
+                ["Last username change", viewing.lastUsernameChange && fmtDate(viewing.lastUsernameChange)],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <div className="text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-3)] mb-1">{label}</div>
+                  <div className="text-sm break-words">{value || "—"}</div>
+                </div>
+              ))}
+              <div className="col-span-2">
+                <div className="text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-3)] mb-1">Privileges</div>
+                <div className="text-sm">{(viewing.privileges || []).join(", ") || "—"}</div>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-3.5 border-t border-[color:var(--border)] mt-3.5">
+              <button className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[5px] border border-[color:var(--border)] bg-transparent cursor-pointer" onClick={() => setViewing(null)}>Close</button>
+            </div>
+          </>
+        )}
       </Modal>
       <ConfirmDialog pending={pending} onCancel={cancel} onConfirm={run} />
     </div>
