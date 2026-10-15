@@ -472,7 +472,7 @@ class InquiryListCreateView(RoleRequiredAPIView):
     required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
-        qs = Inquiry.objects.all().order_by('-dateTime')
+        qs = Inquiry.objects.select_related('operator').prefetch_related('attachment_files').order_by('-dateTime')
 
         category = request.query_params.get('category')
         priority = request.query_params.get('priority')
@@ -651,7 +651,7 @@ class FollowupListCreateView(RoleRequiredAPIView):
     required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
-        qs = Followup.objects.all().order_by('date')
+        qs = Followup.objects.select_related('inquiry', 'assignedOperator').order_by('date')
 
         operator = request.query_params.get('operator')
         status_param = request.query_params.get('status')
@@ -861,7 +861,7 @@ class AppointmentListCreateView(RoleRequiredAPIView):
         # sort last for a setup-backed visit anyway, since the real dates
         # live on the setup's range), so createdAt is the only ordering that
         # is always populated and matches "what did we just book".
-        qs = Appointment.objects.all().order_by('-createdAt')
+        qs = Appointment.objects.select_related('setup').order_by('-createdAt')
 
         status_param = request.query_params.get('status')
         auction = request.query_params.get('auction')
@@ -1005,7 +1005,7 @@ class PickupListCreateView(RoleRequiredAPIView):
     required_roles = ROLES_ANY_AUTHENTICATED_USER
 
     def get(self, request):
-        qs = Pickup.objects.all().order_by('-createdAt')
+        qs = Pickup.objects.select_related('createdBy').order_by('-createdAt')
         status_param = request.query_params.get('status')
         if status_param:
             qs = qs.filter(status=status_param)
