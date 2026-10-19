@@ -10,9 +10,10 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import RowDetail from "../components/RowDetail";
 import { complaints as complaintsApi } from "../api";
 import { EditIcon, DeleteIcon, PlusIcon, CheckIcon } from "../components/icons";
-import AutoCompleteField from "../components/AutoCompleteField";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
-import { getRecentUniqueOptions } from "../utils/recentOptions";
+import CallerPicker from "../components/CallerPicker";
+import CallerHistory from "../components/CallerHistory";
+import { buildCallerIndex, callerList } from "../utils/callers";
 
 export const emptyComplaint = {
   id: "", inquiryId: "", callerName: "", phone: "", category: COMPLAINT_CATEGORIES[0],
@@ -20,7 +21,7 @@ export const emptyComplaint = {
   resolution: "", resolutionDate: "", date: "",
 };
 
-export default function Complaints({ complaints, setComplaints, canEdit, addAudit, session }) {
+export default function Complaints({ complaints, setComplaints, canEdit, addAudit, session, inquiries = [] }) {
   const [fStatus, setFStatus] = useState("All");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -33,12 +34,9 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
   const [viewing, setViewing] = useState(null);
   const { pending, confirm, cancel, run } = useConfirm();
 
-  // 3d: repeat callers — offer their phone from history instead of
-  // retyping it every time a new complaint comes in from them.
-  const phoneOptions = useMemo(
-    () => getRecentUniqueOptions(complaints, (c) => c.phone, (c) => c.date, 30),
-    [complaints]
-  );
+  const callerIndex = useMemo(() => buildCallerIndex(inquiries, complaints, []), [inquiries, complaints]);
+  const callers = useMemo(() => callerList(callerIndex), [callerIndex]);
+  const matchedCaller = callerIndex.get(draft.phone);
 
   async function bulkDelete() {
     const rows = sel.selectedFrom(sorted);
@@ -358,23 +356,15 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
           </Field>
 
           <Field label="Caller name (optional)">
-            <input
-              className={inputCls}
-              value={draft.callerName}
-              onChange={(e) =>
-                setDraft({ ...draft, callerName: e.target.value })
-              }
-            />
+            <CallerPicker mode="name" value={draft.callerName} callers={callers} placeholder="Type a name to find a past caller"
+              onChange={(v) => setDraft({ ...draft, callerName: v })} onPick={(c) => setDraft((d) => ({ ...d, phone: c.phone, callerName: d.callerName || c.name }))} />
           </Field>
 
           <Field label="Phone number">
-            <AutoCompleteField
-              value={draft.phone}
-              onChange={(v) => setDraft({ ...draft, phone: v })}
-              options={phoneOptions}
-              placeholder="Choose a past caller or type a new number"
-            />
+            <CallerPicker mode="phone" value={draft.phone} callers={callers} placeholder="Type a number or pick a past caller"
+              onChange={(v) => setDraft({ ...draft, phone: v })} onPick={(c) => setDraft((d) => ({ ...d, phone: c.phone, callerName: d.callerName || c.name }))} />
           </Field>
+          {!editing && <CallerHistory caller={matchedCaller} />}
 
           <Field label="Category">
             <select
@@ -491,6 +481,7 @@ export default function Complaints({ complaints, setComplaints, canEdit, addAudi
           ["Department", viewing.department], ["Priority", viewing.priority],
           ["Status", viewing.status], ["Logged", fmtDate(viewing.date)],
           ["Resolved on", viewing.resolutionDate && fmtDate(viewing.resolutionDate)],
+          ["Other inquiries from this caller", (callerIndex.get(viewing.phone)?.recent || []).filter(r => r.id !== viewing.inquiryId).map(r => `${r.id} (${r.label}, ${r.status})`).join(", "), true],
           ["Description", viewing.description, true],
           ["Resolution", viewing.resolution, true],
         ]}

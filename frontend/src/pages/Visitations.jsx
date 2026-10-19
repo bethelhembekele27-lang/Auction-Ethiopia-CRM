@@ -9,12 +9,13 @@ import { isSetupOpen } from "./VisitSetups";
 import { appointments as appointmentsApi, followups as followupsApi } from "../api";
 import { EditIcon, DeleteIcon, PlusIcon, SendIcon } from "../components/icons";
 import { useConfirm } from "../hooks/useConfirm";
-import AutoCompleteField from "../components/AutoCompleteField";
 import LocationFields, { useSavedLocations } from "../components/LocationFields";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RowDetail from "../components/RowDetail";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
-import { getRecentUniqueOptions } from "../utils/recentOptions";
+import CallerPicker from "../components/CallerPicker";
+import CallerHistory from "../components/CallerHistory";
+import { buildCallerIndex, callerList } from "../utils/callers";
 
 // No visitDate/visitTime/status here on purpose: the visit window comes from the
 // chosen Visit Setup, and Status is no longer used. setupIds is UI-only.
@@ -42,7 +43,7 @@ const pick = (d) => ({
   quantity: d.quantity, mapsLink: d.mapsLink, isCustom: false,
 });
 
-export default function Visitations({ appointments, setAppointments, visitSetups, setFollowups, canEdit, addAudit, session }) {
+export default function Visitations({ appointments, setAppointments, visitSetups, setFollowups, canEdit, addAudit, session, inquiries = [] }) {
   const [fCompany, setFCompany] = useState("All");
   const [fBatch, setFBatch] = useState("All");
   const [fGuide, setFGuide] = useState("All");
@@ -83,10 +84,9 @@ export default function Visitations({ appointments, setAppointments, visitSetups
     return openVisitSetups;
   }, [openVisitSetups, visitSetups, draft.setupId]);
 
-  const phoneOptions = useMemo(
-    () => getRecentUniqueOptions(appointments, (a) => a.phone, (a) => a.createdAt, 30),
-    [appointments]
-  );
+  const callerIndex = useMemo(() => buildCallerIndex(inquiries, [], appointments), [inquiries, appointments]);
+  const callers = useMemo(() => callerList(callerIndex), [callerIndex]);
+  const matchedCaller = callerIndex.get(draft.phone);
 
   const filtered = appointments.filter((a) => {
     if (fCompany !== "All" && a.company !== fCompany) return false;
@@ -424,17 +424,23 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           {draft.isCustom ? (
             <>
               <Field label="Phone number" full>
-                <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past visitor or type a new number" />
+                <CallerPicker mode="phone" value={draft.phone} callers={callers} placeholder="Type a number or pick a past caller"
+                  onChange={(v) => setDraft({ ...draft, phone: v })} onPick={(c) => setDraft((d) => ({ ...d, phone: c.phone, company: d.company || c.company }))} />
               </Field>
               <LocationFields loc={loc} addressLabel="Place name / address" address={draft.address} mapsLink={draft.mapsLink}
                 onChange={(p) => setDraft((d) => ({ ...d, ...p }))} />
             </>
           ) : (
             <>
-              <Field label="Visitor name (optional)"><input className={inputCls} value={draft.visitorName} onChange={(e) => setDraft({ ...draft, visitorName: e.target.value })} /></Field>
-              <Field label="Phone number">
-                <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past visitor or type a new number" />
+              <Field label="Visitor name (optional)">
+                <CallerPicker mode="name" value={draft.visitorName} callers={callers} placeholder="Type a name to find a past caller"
+                  onChange={(v) => setDraft({ ...draft, visitorName: v })} onPick={(c) => setDraft((d) => ({ ...d, phone: c.phone, visitorName: d.visitorName || c.name, company: d.company || c.company }))} />
               </Field>
+              <Field label="Phone number">
+                <CallerPicker mode="phone" value={draft.phone} callers={callers} placeholder="Type a number or pick a past caller"
+                  onChange={(v) => setDraft({ ...draft, phone: v })} onPick={(c) => setDraft((d) => ({ ...d, phone: c.phone, visitorName: d.visitorName || c.name, company: d.company || c.company }))} />
+              </Field>
+              {!editing && <CallerHistory caller={matchedCaller} />}
               <Field label="Quantity (optional)"><input className={inputCls} placeholder="e.g. 1, or 3 lots" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} /></Field>
               <Field label="Notes (optional)" full><textarea className={inputCls} rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
             </>
@@ -496,6 +502,7 @@ export default function Visitations({ appointments, setAppointments, visitSetups
           ["Address", viewing.address], ["Map link", viewing.mapsLink],
           ["Quantity", viewing.quantity], ["Verification", viewing.verificationStatus],
           ["Registered", fmtDate(localDate(viewing.createdAt))],
+          ["Other inquiries from this caller", (callerIndex.get(viewing.phone)?.recent || []).map(r => `${r.id} (${r.label}, ${r.status})`).join(", "), true],
           ["Items", viewing.items, true], ["Notes", viewing.notes, true],
         ]}
         onClose={() => setViewing(null)}

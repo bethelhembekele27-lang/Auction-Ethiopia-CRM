@@ -16,6 +16,9 @@ import { EditIcon, DeleteIcon, CalendarIcon, SendIcon } from "../components/icon
 import AutoCompleteField from "../components/AutoCompleteField";
 import { isValidEthiopianPhone, PHONE_HINT } from "../utils/validation";
 import { getRecentUniqueOptions } from "../utils/recentOptions";
+import CallerPicker from "../components/CallerPicker";
+import CallerHistory from "../components/CallerHistory";
+import { buildCallerIndex, callerList } from "../utils/callers";
 
 async function openAttachment(att) {
   if (!att?.url) return;
@@ -127,11 +130,14 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
     () => getRecentUniqueOptions(inquiries, (i) => i.company, (i) => i.dateTime, 30),
     [inquiries]
   );
-  const phoneOptions = useMemo(
-    () => getRecentUniqueOptions(inquiries, (i) => i.phone, (i) => i.dateTime, 30),
-    [inquiries]
-  );
+  const callerIndex = useMemo(() => buildCallerIndex(inquiries), [inquiries]);
+  const callers = useMemo(() => callerList(callerIndex), [callerIndex]);
+  const matchedCaller = callerIndex.get(draft.phone);
   const selectedSetup = apptDraft ? (visitSetups || []).find((v) => v.id === apptDraft.setupId) : null;
+
+  function fillFrom(c) {
+    setDraft((d) => ({ ...d, phone: c.phone, callerName: d.callerName || c.name, company: d.company || c.company }));
+  }
 
   const filtered = useMemo(() => {
     return inquiries.filter((i) => {
@@ -470,10 +476,15 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing}` : "New inquiry"} wide>
         <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
-          <Field label="Caller name (optional)"><input className={inputCls} value={draft.callerName} onChange={(e) => setDraft({ ...draft, callerName: e.target.value })} /></Field>
-          <Field label="Phone number">
-            <AutoCompleteField value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
+          <Field label="Caller name (optional)">
+            <CallerPicker mode="name" value={draft.callerName} callers={callers} placeholder="Type a name to find a past caller"
+              onChange={(v) => setDraft({ ...draft, callerName: v })} onPick={fillFrom} />
           </Field>
+          <Field label="Phone number">
+            <CallerPicker mode="phone" value={draft.phone} callers={callers} placeholder="Type a number or pick a past caller"
+              onChange={(v) => setDraft({ ...draft, phone: v })} onPick={fillFrom} />
+          </Field>
+          {!editing && <CallerHistory caller={matchedCaller} />}
           <Field label="Company (optional)">
             <AutoCompleteField value={draft.company} onChange={(v) => setDraft({ ...draft, company: v })} options={companyOptions} placeholder="Choose a past company or type a new one" />
           </Field>
@@ -576,9 +587,13 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
                   Guide {selectedSetup.guideName} ({selectedSetup.guidePhone}), {selectedSetup.guideTimeFrom}–{selectedSetup.guideTimeTo}
                 </div>
               )}
-              <Field label="Visitor name"><input className={inputCls} value={apptDraft.visitorName} onChange={(e) => setApptDraft({ ...apptDraft, visitorName: e.target.value })} /></Field>
+              <Field label="Visitor name">
+                <CallerPicker mode="name" value={apptDraft.visitorName} callers={callers} placeholder="Type a name to find a past caller"
+                  onChange={(v) => setApptDraft({ ...apptDraft, visitorName: v })} onPick={(c) => setApptDraft((d) => ({ ...d, phone: c.phone, visitorName: d.visitorName || c.name, company: d.company || c.company }))} />
+              </Field>
               <Field label="Phone number">
-                <AutoCompleteField value={apptDraft.phone} onChange={(v) => setApptDraft({ ...apptDraft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
+                <CallerPicker mode="phone" value={apptDraft.phone} callers={callers} placeholder="Type a number or pick a past caller"
+                  onChange={(v) => setApptDraft({ ...apptDraft, phone: v })} onPick={(c) => setApptDraft((d) => ({ ...d, phone: c.phone, visitorName: d.visitorName || c.name, company: d.company || c.company }))} />
               </Field>
               <Field label="Quantity (optional)"><input className={inputCls} placeholder="e.g. 1, or 3 lots" value={apptDraft.quantity} onChange={(e) => setApptDraft({ ...apptDraft, quantity: e.target.value })} /></Field>
               <Field label="Notes" full><textarea className={inputCls} rows={2} value={apptDraft.notes} onChange={(e) => setApptDraft({ ...apptDraft, notes: e.target.value })} /></Field>
@@ -598,9 +613,13 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           <>
             <div className="grid grid-cols-2 gap-y-3.5 gap-x-5 mb-2.5">
               <Field label="Related inquiry ID (optional)"><input className={inputCls} value={cmpDraft.inquiryId} onChange={(e) => setCmpDraft({ ...cmpDraft, inquiryId: e.target.value })} /></Field>
-              <Field label="Caller name (optional)"><input className={inputCls} value={cmpDraft.callerName} onChange={(e) => setCmpDraft({ ...cmpDraft, callerName: e.target.value })} /></Field>
+              <Field label="Caller name (optional)">
+                <CallerPicker mode="name" value={cmpDraft.callerName} callers={callers} placeholder="Type a name to find a past caller"
+                  onChange={(v) => setCmpDraft({ ...cmpDraft, callerName: v })} onPick={(c) => setCmpDraft((d) => ({ ...d, phone: c.phone, callerName: d.callerName || c.name }))} />
+              </Field>
               <Field label="Phone number">
-                <AutoCompleteField value={cmpDraft.phone} onChange={(v) => setCmpDraft({ ...cmpDraft, phone: v })} options={phoneOptions} placeholder="Choose a past caller or type a new number" />
+                <CallerPicker mode="phone" value={cmpDraft.phone} callers={callers} placeholder="Type a number or pick a past caller"
+                  onChange={(v) => setCmpDraft({ ...cmpDraft, phone: v })} onPick={(c) => setCmpDraft((d) => ({ ...d, phone: c.phone, callerName: d.callerName || c.name }))} />
               </Field>
               <Field label="Category"><select className={inputCls} value={cmpDraft.category} onChange={(e) => setCmpDraft({ ...cmpDraft, category: e.target.value })}>{COMPLAINT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
               <Field label="Assigned department"><select className={inputCls} value={cmpDraft.department} onChange={(e) => setCmpDraft({ ...cmpDraft, department: e.target.value })}>{DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}</select></Field>
@@ -644,6 +663,7 @@ export default function Inquiries({ inquiries, setInquiries, setFollowups, setAp
           ["Operator", viewing.operator], ["Date", fmtDate((viewing.dateTime || "").slice(0, 10))],
           ["Follow-up date", viewing.followUpDate && fmtDate(viewing.followUpDate)],
           ["Resolved", viewing.resolvedDate && fmtDate(viewing.resolvedDate)],
+          ["Other inquiries from this caller", (callerIndex.get(viewing.phone)?.recent || []).filter(r => r.id !== viewing.id).map(r => `${r.id} (${r.label}, ${r.status})`).join(", "), true],
           ["Description", viewing.description, true],
           ["Resolution notes", viewing.resolutionNotes, true],
           ["Attachments", (viewing.attachments || []).map((a) => a.fileName).join(", "), true],

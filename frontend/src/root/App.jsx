@@ -320,9 +320,9 @@ export default function App() {
               {page === "callers" && <Callers inquiries={inquiries} followups={followups} appointments={appointments} />}
               {page === "followups" && <Followups followups={followups} setFollowups={setFollowups} canEdit={canEdit} addAudit={addAudit} />}
               {page === "visitsetup" && <VisitSetups visitSetups={visitSetups} setVisitSetups={setVisitSetups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
-              {page === "visitations" && <Visitations appointments={appointments} setAppointments={setAppointments} visitSetups={visitSetups} setFollowups={setFollowups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />}
+              {page === "visitations" && <Visitations appointments={appointments} setAppointments={setAppointments} visitSetups={visitSetups} setFollowups={setFollowups} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} inquiries={inquiries} />}
               {page === "pickups" && <Pickups pickups={pickups} setPickups={setPickups} canEdit={canEdit} addAudit={addAudit} session={session} />}
-              {page === "complaints" && <Complaints complaints={complaints} setComplaints={setComplaints} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} />} 
+              {page === "complaints" && <Complaints complaints={complaints} setComplaints={setComplaints} genId={genId} canEdit={canEdit} addAudit={addAudit} session={session} inquiries={inquiries} />} 
               {page === "reports" && canSeePage("reports") && <Reports inquiries={inquiries} appointments={appointments} complaints={complaints} />}
               {page === "audit" && canSeePage("audit") && <Audit auditLog={auditLog} setAuditLog={setAuditLog} session={session} />}
               {page === "escalations" && canSeePage("escalations") && (
