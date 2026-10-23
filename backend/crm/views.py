@@ -505,7 +505,11 @@ class InquiryListCreateView(RoleRequiredAPIView):
         return Response(InquirySerializer(inquiry, context={'request': request}).data, status=http_status.HTTP_201_CREATED)
 
 class InquiryDetailView(RoleRequiredAPIView):
-    required_roles = ROLES_ANY_AUTHENTICATED_USER
+    method_roles = {
+        'GET': ROLES_ANY_AUTHENTICATED_USER,
+        'PATCH': ('administrator', 'auction_manager', 'call_operator'),
+        'DELETE': ('administrator', 'auction_manager', 'call_operator'),
+    }
 
     def get_object(self, inquiry_id):
         try:
@@ -682,7 +686,10 @@ class FollowupDetailView(RoleRequiredAPIView):
     PATCH /api/followups/<publicId>/ — update a follow-up.
     DELETE /api/followups/<publicId>/ — delete a follow-up.
     """
-    required_roles = ROLES_ANY_AUTHENTICATED_USER
+    method_roles = {
+        'PATCH': ('administrator', 'auction_manager', 'call_operator'),
+        'DELETE': ('administrator', 'auction_manager', 'call_operator'),
+    }
 
     def patch(self, request, followup_id):
         try:
@@ -776,7 +783,7 @@ class VisitSetupListCreateView(RoleRequiredAPIView):
 
 class VisitSetupDetailView(RoleRequiredAPIView):
     """PATCH /api/visit-setups/<publicId>/ — partial updates."""
-    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator',)}
+    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager', 'call_operator')}
 
     def patch(self, request, visit_setup_id):
         try:
@@ -886,7 +893,7 @@ class AppointmentListCreateView(RoleRequiredAPIView):
 
 class AppointmentDetailView(RoleRequiredAPIView):
     """PATCH /api/appointments/<publicId>/ — partial updates."""
-    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager')}
+    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager', 'call_operator')}
 
     def patch(self, request, appointment_id):
         try:
@@ -1021,7 +1028,7 @@ class PickupListCreateView(RoleRequiredAPIView):
 
 
 class PickupDetailView(RoleRequiredAPIView):
-    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager')}
+    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager', 'call_operator')}
 
     def patch(self, request, pickup_id):
         try:
@@ -1168,7 +1175,7 @@ class ComplaintDetailView(RoleRequiredAPIView):
     PATCH /api/complaints/<publicId>/ — if status is set to "Resolved"
     without resolutionDate, Complaint.save() defaults it to today.
     """
-    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager')}
+    method_roles = {'PATCH': ROLES_ANY_AUTHENTICATED_USER, 'DELETE': ('administrator', 'auction_manager', 'call_operator')}
 
     def patch(self, request, complaint_id):
         try:
